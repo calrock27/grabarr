@@ -1,0 +1,52 @@
+# Databases (except we want to keep the main one in .gitignore)
+*.db
+*.sqlite
+
+# Debug/log files
+*.log
+debug_output*.log
+backend_debug.log
+
+# Test files and scripts at root
+verify_*.py
+migrate_db.py
+patch_db.py
+repro_*.py
+contents.txt
+test_backup.enc
+ToDo
+
+# Docker verification
+docker-compose.verify.yml
+
+# Python virtual environments
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+pip-log.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend specific
+backend/venv/
+backend/*.log
+backend/*.sqlite
+backend/*.db
+backend/debug_output*.log
+backend/get-pip.py
+backend/check_db.py
+backend/test_data/
+backend/bin/
+
+# Frontend (already in frontend/.gitignore but adding here too)
+frontend/node_modules/
+frontend/.next/
+frontend/*.log
