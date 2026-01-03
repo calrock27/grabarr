@@ -50,3 +50,6 @@ backend/bin/
 frontend/node_modules/
 frontend/.next/
 frontend/*.log
+
+##My Stuff
+ToDo

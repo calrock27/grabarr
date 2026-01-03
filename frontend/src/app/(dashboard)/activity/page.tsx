@@ -36,6 +36,21 @@ export default function ActivityPage() {
     const [selectedFiles, setSelectedFiles] = useState<string[] | null>(null)
     const [selectedSnapshot, setSelectedSnapshot] = useState<any | null>(null)
 
+    useEffect(() => {
+        const fetchHistory = async () => {
+            try {
+                setLoading(true)
+                const data = await api.getHistory()
+                setHistory(data)
+            } catch (error) {
+                console.error("Failed to fetch history:", error)
+            } finally {
+                setLoading(false)
+            }
+        }
+        fetchHistory()
+    }, [])
+
     const formatSpeed = (bytesPerSec?: number) => {
         if (!bytesPerSec) return "—"
         if (bytesPerSec > 1024 * 1024) {
