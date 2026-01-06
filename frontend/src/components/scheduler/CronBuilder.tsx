@@ -260,7 +260,7 @@ export function CronBuilder({ value, onChange }: CronBuilderProps) {
             </Tabs>
 
             <div className="p-2 text-center">
-                <code className="bg-muted px-2 py-1 rounded text-sm text-emerald-400">{value}</code>
+                <code className="bg-muted px-2 py-1 rounded text-sm text-primary">{value}</code>
             </div>
         </div>
     )

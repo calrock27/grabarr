@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { api, type Job, type Schedule } from "@/lib/api"
+import { api, type Job, type Schedule, type ListParams } from "@/lib/api"
 import { toast } from "sonner"
 import { logger } from "@/lib/logger"
-import { Plus, Play, Trash2, Code, Copy, Square, Power, PowerOff, Check, X, ChevronDown } from "lucide-react"
+import { Plus, Play, Trash2, Square, Power, PowerOff, Check, X, ChevronDown } from "lucide-react"
 import {
     Table,
     TableBody,
@@ -19,15 +19,6 @@ import { SearchInput } from "@/components/ui/search-input"
 import { SortableHeader } from "@/components/ui/sortable-header"
 import { useDataTable } from "@/hooks/use-data-table"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
-
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
 
 export default function JobsPage() {
@@ -35,22 +26,45 @@ export default function JobsPage() {
     const [jobs, setJobs] = useState<Job[]>([])
     const [schedules, setSchedules] = useState<Schedule[]>([])
     const [loading, setLoading] = useState(true)
+    const [searchValue, setSearchValue] = useState("")
+    const [debouncedSearch, setDebouncedSearch] = useState("")
     const [jobStatusMap, setJobStatusMap] = useState<Record<number, {
         status: 'idle' | 'running' | 'success' | 'failed',
         stats?: any,
         error?: string,
         timestamp?: number
     }>>({})
-    const [embedJob, setEmbedJob] = useState<Job | null>(null)
+
+    // Debounce search input
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchValue)
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [searchValue])
+
+    // Fetch jobs when search changes
+    const fetchJobs = async () => {
+        setLoading(true)
+        try {
+            const params: ListParams = {}
+            if (debouncedSearch) params.search = debouncedSearch
+            const jobsData = await api.getJobs(params)
+            setJobs(jobsData)
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     useEffect(() => {
-        Promise.all([
-            api.getJobs(),
-            api.getSchedules()
-        ]).then(([jobsData, schedulesData]) => {
-            setJobs(jobsData)
-            setSchedules(schedulesData)
-        }).catch(console.error).finally(() => setLoading(false))
+        fetchJobs()
+    }, [debouncedSearch])
+
+    // Fetch schedules once
+    useEffect(() => {
+        api.getSchedules().then(setSchedules).catch(console.error)
 
         const evtSource = new EventSource("/api/events")
 
@@ -62,18 +76,28 @@ export default function JobsPage() {
                     [data.job_id]: { status: 'running', stats: data.stats, timestamp: Date.now() }
                 }))
             } else if (data.type === 'job_update') {
+                const { job_id, status, error } = data;
+
+                // Update specific job in the list
+                setJobs(prevJobs => prevJobs.map(job =>
+                    job.id === job_id
+                        ? { ...job, last_status: status, last_error: error, last_run: status === 'success' || status === 'failed' ? new Date().toISOString() : job.last_run }
+                        : job
+                ));
+
                 setJobStatusMap(prev => ({
                     ...prev,
-                    [data.job_id]: { status: data.status, error: data.error, timestamp: Date.now() }
+                    [job_id]: { status: status, error: error, timestamp: Date.now() }
                 }))
-                if (data.status === 'success') toast.success("Job completed")
-                if (data.status === 'failed') toast.error(`Job failed: ${data.error || "Unknown"}`)
-                api.getJobs().then(setJobs).catch(console.error)
+
+                if (status === 'success') toast.success("Job completed")
+                if (status === 'failed') toast.error(`Job failed: ${error || "Unknown"}`)
             }
         }
 
         evtSource.onerror = () => {
-            setTimeout(() => api.getJobs().then(setJobs).catch(console.error), 2000)
+            // Only re-fetch on error to ensure sync, but less frequently?
+            // Actually, we can just leave it for now or retry connection.
         }
 
         return () => evtSource.close()
@@ -82,23 +106,20 @@ export default function JobsPage() {
     async function handleDelete(id: number) {
         if (!confirm("Delete this job?")) return
         await api.deleteJob(id)
-        api.getJobs().then(setJobs)
+        fetchJobs()
     }
 
     async function handleToggle(job: Job) {
         try {
             await api.toggleJob(job.id, !job.enabled)
-            api.getJobs().then(setJobs)
+            fetchJobs()
             toast.success(job.enabled ? "Job disabled" : "Job enabled")
         } catch {
             toast.error("Failed to toggle job")
         }
     }
 
-    const getEmbedCode = (id: number) => {
-        const url = `${window.location.protocol}//${window.location.host}/embed/job/${id}`
-        return `<iframe src="${url}" width="350" height="150" frameborder="0"></iframe>`
-    }
+
 
     const formatDate = (date?: string) => {
         if (!date) return "—"
@@ -151,7 +172,7 @@ export default function JobsPage() {
                             { label: 'Copy', value: 'copy' },
                             { label: 'Move', value: 'move' }
                         ]}
-                        onSave={(val) => api.patchJob(row.original.id, { operation: val }).then(() => api.getJobs().then(setJobs))}
+                        onSave={(val) => api.patchJob(row.original.id, { operation: val }).then(() => fetchJobs())}
                     />
                 </div>
             )
@@ -167,7 +188,7 @@ export default function JobsPage() {
                             { label: 'Direct', value: 'direct' },
                             { label: 'Proxy', value: 'proxy' }
                         ]}
-                        onSave={(val) => api.patchJob(row.original.id, { transfer_method: val as any }).then(() => api.getJobs().then(setJobs))}
+                        onSave={(val) => api.patchJob(row.original.id, { transfer_method: val as any }).then(() => fetchJobs())}
                     />
                 </div>
             )
@@ -185,7 +206,7 @@ export default function JobsPage() {
                         ]}
                         onSave={(val) => {
                             const updateVal = val === "Manual" ? "Manual" : val;
-                            return api.patchJob(row.original.id, { schedule: updateVal }).then(() => api.getJobs().then(setJobs))
+                            return api.patchJob(row.original.id, { schedule: updateVal }).then(() => fetchJobs())
                         }}
                     />
                 </div>
@@ -312,15 +333,7 @@ export default function JobsPage() {
                         >
                             <Square className="h-3.5 w-3.5 text-orange-400" />
                         </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 hover:bg-white/10 active:scale-90 transition-all"
-                            title="Embed Code"
-                            onClick={(e) => { e.stopPropagation(); setEmbedJob(job); }}
-                        >
-                            <Code className="h-3.5 w-3.5 text-blue-400" />
-                        </Button>
+
                         <Button
                             variant="ghost"
                             size="icon"
@@ -355,28 +368,13 @@ export default function JobsPage() {
                 </Link>
             </div>
 
-            <Dialog open={!!embedJob} onOpenChange={() => setEmbedJob(null)}>
-                <DialogContent className="bg-zinc-950 border-gray-800">
-                    <DialogHeader>
-                        <DialogTitle>Embed Code</DialogTitle>
-                        <DialogDescription>Copy this code to embed job status.</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex gap-2">
-                        <Input readOnly value={embedJob ? getEmbedCode(embedJob.id) : ''} className="font-mono text-xs" />
-                        <Button size="icon" variant="outline" onClick={() => {
-                            navigator.clipboard.writeText(embedJob ? getEmbedCode(embedJob.id) : '')
-                            toast.success("Copied")
-                        }}>
-                            <Copy className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
+
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
-                    value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-                    onChange={(event) => table.getColumn("name")?.setFilterValue(event)}
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    placeholder="Search jobs..."
                 />
             </div>
 

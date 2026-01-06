@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { api, type JobHistory } from "@/lib/api"
+import { api, type JobHistory, type ListParams } from "@/lib/api"
+import { Button } from "@/components/ui/button"
 import {
     Table,
     TableBody,
@@ -33,23 +34,52 @@ import { ColumnDef, flexRender } from "@tanstack/react-table"
 export default function ActivityPage() {
     const [history, setHistory] = useState<JobHistory[]>([])
     const [loading, setLoading] = useState(true)
+    const [loadingMore, setLoadingMore] = useState(false)
+    const [offset, setOffset] = useState(0)
+    const [hasMore, setHasMore] = useState(true)
+    const LIMIT = 50
+    const [searchValue, setSearchValue] = useState("")
+    const [debouncedSearch, setDebouncedSearch] = useState("")
+
     const [selectedFiles, setSelectedFiles] = useState<string[] | null>(null)
     const [selectedSnapshot, setSelectedSnapshot] = useState<any | null>(null)
 
+    // Debounce search
     useEffect(() => {
-        const fetchHistory = async () => {
-            try {
-                setLoading(true)
-                const data = await api.getHistory()
-                setHistory(data)
-            } catch (error) {
-                console.error("Failed to fetch history:", error)
-            } finally {
-                setLoading(false)
-            }
+        const timer = setTimeout(() => setDebouncedSearch(searchValue), 300)
+        return () => clearTimeout(timer)
+    }, [searchValue])
+
+    const fetchHistory = async (newOffset: number, searchTerm?: string) => {
+        try {
+            if (newOffset === 0) setLoading(true)
+            else setLoadingMore(true)
+
+            const params: ListParams = { limit: LIMIT, offset: newOffset }
+            if (searchTerm) params.search = searchTerm
+            const data = await api.getHistory(params)
+            if (data.length < LIMIT) setHasMore(false)
+            else setHasMore(true)
+
+            if (newOffset === 0) setHistory(data)
+            else setHistory(prev => [...prev, ...data])
+
+            setOffset(newOffset)
+        } catch (error) {
+            console.error("Failed to fetch history:", error)
+        } finally {
+            setLoading(false)
+            setLoadingMore(false)
         }
-        fetchHistory()
-    }, [])
+    }
+
+    useEffect(() => {
+        fetchHistory(0, debouncedSearch)
+    }, [debouncedSearch])
+
+    const handleLoadMore = () => {
+        fetchHistory(offset + LIMIT, debouncedSearch)
+    }
 
     const formatSpeed = (bytesPerSec?: number) => {
         if (!bytesPerSec) return "—"
@@ -257,13 +287,13 @@ export default function ActivityPage() {
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
-                    value={(table.getColumn("job_name")?.getFilterValue() as string) ?? ""}
-                    onChange={(event) => table.getColumn("job_name")?.setFilterValue(event)}
-                    placeholder="Search jobs..."
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    placeholder="Search by job name or status..."
                 />
             </div>
 
-            <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
+            <div className="rounded-md border border-border bg-card overflow-hidden">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
@@ -286,7 +316,7 @@ export default function ActivityPage() {
                     <TableBody>
                         {loading && history.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-zinc-500">Loading...</TableCell>
+                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">Loading...</TableCell>
                             </TableRow>
                         ) : table.getRowModel().rows?.length ? (
                             table.getRowModel().rows.map((row) => (
@@ -300,12 +330,25 @@ export default function ActivityPage() {
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-zinc-500">No activity recorded.</TableCell>
+                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">No activity recorded.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
                 </Table>
             </div>
+
+            {hasMore && history.length > 0 && (
+                <div className="mt-6 flex justify-center">
+                    <Button
+                        variant="outline"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                        className="border-zinc-800 hover:bg-zinc-900 text-zinc-400"
+                    >
+                        {loadingMore ? "Loading..." : "Load More"}
+                    </Button>
+                </div>
+            )}
 
             {/* Files Modal */}
             <Dialog open={!!selectedFiles} onOpenChange={() => setSelectedFiles(null)}>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { api, type Schedule } from "@/lib/api"
+import { api, type Schedule, type ListParams } from "@/lib/api"
 import { toast } from "sonner"
 import { logger } from "@/lib/logger"
 import cronstrue from "cronstrue";
@@ -9,7 +9,6 @@ import { getNextRunDate } from "@/lib/cron";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
 import {
     Table,
     TableBody,
@@ -22,7 +21,7 @@ import { SearchInput } from "@/components/ui/search-input"
 import { SortableHeader } from "@/components/ui/sortable-header"
 import { useDataTable } from "@/hooks/use-data-table"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
-import { Plus, Trash2, Calendar, Copy } from "lucide-react"
+import { Plus, Trash2, Copy } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -39,22 +38,49 @@ export default function SchedulesPage() {
     const [loading, setLoading] = useState(true)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [isOpen, setIsOpen] = useState(false)
+    const [searchValue, setSearchValue] = useState("")
+    const [debouncedSearch, setDebouncedSearch] = useState("")
 
     // State
     const [name, setName] = useState("")
     const [cronValue, setCronValue] = useState("*/15 * * * *")
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
+    const [systemTimezone, setSystemTimezone] = useState<string>("America/New_York")
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchValue), 300)
+        return () => clearTimeout(timer)
+    }, [searchValue])
 
     useEffect(() => {
         loadData()
+    }, [debouncedSearch])
+
+    useEffect(() => {
+        loadTimezone()
         setCurrentTime(new Date())
         const interval = setInterval(() => setCurrentTime(new Date()), 1000)
         return () => clearInterval(interval)
     }, [])
 
-    async function loadData() {
+    async function loadTimezone() {
         try {
-            const data = await api.getSchedules()
+            const settings = await api.getSystemSettings()
+            if (settings.timezone) {
+                setSystemTimezone(settings.timezone)
+            }
+        } catch (e) {
+            console.warn("Failed to load timezone settings")
+        }
+    }
+
+    async function loadData() {
+        setLoading(true)
+        try {
+            const params: ListParams = {}
+            if (debouncedSearch) params.search = debouncedSearch
+            const data = await api.getSchedules(params)
             setSchedules(data)
         } catch (err) {
             console.error(err)
@@ -164,7 +190,6 @@ export default function SchedulesPage() {
                         setIsOpen(true)
                     }}
                 >
-                    <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
                     {row.getValue("name")}
                 </div>
             )
@@ -237,7 +262,7 @@ export default function SchedulesPage() {
     })
 
     return (
-        <div className="p-8 space-y-6 text-white min-h-screen">
+        <div className="p-6 space-y-6 text-white min-h-screen">
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Schedules</h2>
@@ -253,9 +278,9 @@ export default function SchedulesPage() {
                                 </span>
                             </div>
                             <div className="text-right flex flex-col justify-center">
-                                <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">System Time</span>
+                                <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">System Time ({systemTimezone.split('/').pop()?.replace('_', ' ')})</span>
                                 <span className="text-sm font-mono text-foreground font-medium">
-                                    {currentTime.toLocaleString()}
+                                    {currentTime.toLocaleString('en-US', { timeZone: systemTimezone })}
                                 </span>
                             </div>
                         </>
@@ -265,13 +290,13 @@ export default function SchedulesPage() {
                         if (!val) resetForm()
                     }}>
                         <DialogTrigger asChild>
-                            <Button className="bg-emerald-600 hover:bg-emerald-700">
-                                <Plus className="mr-2 h-4 w-4" /> Add Schedule
+                            <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
+                                <Plus className="mr-2 h-4 w-4" /> New Schedule
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="bg-card text-card-foreground border-border sm:max-w-xl">
                             <DialogHeader>
-                                <DialogTitle>{editingId ? "Edit Schedule" : "New Schedule Template"}</DialogTitle>
+                                <DialogTitle>{editingId ? "Edit Schedule" : "New Schedule"}</DialogTitle>
                                 <DialogDescription>Define a reusable schedule.</DialogDescription>
                             </DialogHeader>
                             <div className="space-y-6 py-4">
@@ -295,60 +320,59 @@ export default function SchedulesPage() {
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
-                    value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-                    onChange={(event) => table.getColumn("name")?.setFilterValue(event)}
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    placeholder="Search schedules..."
                 />
             </div>
 
-            <Card className="bg-card border-border">
-                <CardContent className="p-0">
-                    <Table>
-                        <TableHeader>
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-                                    {headerGroup.headers.map((header) => {
-                                        return (
-                                            <TableHead key={header.id} className="text-muted-foreground">
-                                                {header.isPlaceholder
-                                                    ? null
-                                                    : flexRender(
-                                                        header.column.columnDef.header,
-                                                        header.getContext()
-                                                    )}
-                                            </TableHead>
-                                        )
-                                    })}
+            <div className="rounded-md border border-border bg-card overflow-hidden">
+                <Table>
+                    <TableHeader>
+                        {table.getHeaderGroups().map((headerGroup) => (
+                            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
+                                {headerGroup.headers.map((header) => {
+                                    return (
+                                        <TableHead key={header.id}>
+                                            {header.isPlaceholder
+                                                ? null
+                                                : flexRender(
+                                                    header.column.columnDef.header,
+                                                    header.getContext()
+                                                )}
+                                        </TableHead>
+                                    )
+                                })}
+                            </TableRow>
+                        ))}
+                    </TableHeader>
+                    <TableBody>
+                        {loading ? (
+                            <TableRow>
+                                <TableCell colSpan={columns.length} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
+                            </TableRow>
+                        ) : table.getRowModel().rows?.length ? (
+                            table.getRowModel().rows.map((row) => (
+                                <TableRow
+                                    key={row.id}
+                                    data-state={row.getIsSelected() && "selected"}
+                                    className="border-border/50 hover:bg-zinc-800/30 transition-colors"
+                                >
+                                    {row.getVisibleCells().map((cell) => (
+                                        <TableCell key={cell.id}>
+                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                        </TableCell>
+                                    ))}
                                 </TableRow>
-                            ))}
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                <TableRow>
-                                    <TableCell colSpan={columns.length} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
-                                </TableRow>
-                            ) : table.getRowModel().rows?.length ? (
-                                table.getRowModel().rows.map((row) => (
-                                    <TableRow
-                                        key={row.id}
-                                        data-state={row.getIsSelected() && "selected"}
-                                        className="border-border hover:bg-muted/50 transition-colors"
-                                    >
-                                        {row.getVisibleCells().map((cell) => (
-                                            <TableCell key={cell.id}>
-                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={columns.length} className="text-center py-8 text-muted-foreground">No schedules found. Create one to get started.</TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={columns.length} className="text-center py-8 text-muted-foreground">No schedules found. Create one to get started.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
         </div>
     )
 }

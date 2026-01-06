@@ -10,31 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import { Save, Clock, Database, RefreshCw, Download, Upload, Shield, Globe } from "lucide-react"
 import { setConfiguredTimezone } from "@/lib/dateUtils"
-
-// Common timezones for dropdown
-const COMMON_TIMEZONES = [
-    { value: "auto", label: "Auto-detect (Browser)" },
-    { value: "America/New_York", label: "Eastern Time (ET)" },
-    { value: "America/Chicago", label: "Central Time (CT)" },
-    { value: "America/Denver", label: "Mountain Time (MT)" },
-    { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
-    { value: "America/Anchorage", label: "Alaska Time (AKT)" },
-    { value: "Pacific/Honolulu", label: "Hawaii Time (HST)" },
-    { value: "UTC", label: "UTC" },
-    { value: "Europe/London", label: "London (GMT/BST)" },
-    { value: "Europe/Paris", label: "Paris (CET/CEST)" },
-    { value: "Europe/Berlin", label: "Berlin (CET/CEST)" },
-    { value: "Asia/Tokyo", label: "Tokyo (JST)" },
-    { value: "Asia/Shanghai", label: "Shanghai (CST)" },
-    { value: "Asia/Kolkata", label: "India (IST)" },
-    { value: "Australia/Sydney", label: "Sydney (AEST/AEDT)" },
-]
+import { ALL_TIMEZONES, TIMEZONE_REGIONS } from "@/lib/timezones"
 
 export default function SystemSettingsPage() {
     const [settings, setSettings] = useState<SystemSettings>({
         failure_cooldown_seconds: 60,
         max_history_entries: 50,
-        timezone: "auto"
+        timezone: "America/New_York"
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -232,28 +214,27 @@ export default function SystemSettingsPage() {
                                 Timezone
                             </Label>
                             <Select
-                                value={settings.timezone || "auto"}
+                                value={settings.timezone || "America/New_York"}
                                 onValueChange={(value) => setSettings({ ...settings, timezone: value })}
                             >
                                 <SelectTrigger className="bg-zinc-900/50 border-zinc-700 text-white w-full">
                                     <SelectValue placeholder="Select timezone" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-zinc-900 border-zinc-700">
-                                    {COMMON_TIMEZONES.map((tz) => (
-                                        <SelectItem key={tz.value} value={tz.value} className="text-white">
-                                            {tz.label}
-                                            {tz.value === "auto" && detectedTimezone && (
-                                                <span className="text-zinc-500 ml-2">({detectedTimezone})</span>
-                                            )}
-                                        </SelectItem>
+                                <SelectContent className="bg-zinc-900 border-zinc-700 max-h-80">
+                                    {TIMEZONE_REGIONS.map(region => (
+                                        <div key={region}>
+                                            <div className="px-2 py-1.5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">{region}</div>
+                                            {ALL_TIMEZONES.filter(tz => tz.region === region).map((tz) => (
+                                                <SelectItem key={tz.value} value={tz.value} className="text-white">
+                                                    {tz.label}
+                                                </SelectItem>
+                                            ))}
+                                        </div>
                                     ))}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-zinc-500 mt-1">
-                                {settings.timezone === "auto"
-                                    ? `Currently using: ${detectedTimezone || "detecting..."}`
-                                    : "All dates will be displayed in this timezone"
-                                }
+                                All dates will be displayed in this timezone
                             </p>
                         </div>
                         <div className="flex justify-end pt-2">

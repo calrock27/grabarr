@@ -6,3 +6,6 @@ pydantic
 httpx
 apscheduler
 python-multipart
+cryptography
+pyjwt
+docker

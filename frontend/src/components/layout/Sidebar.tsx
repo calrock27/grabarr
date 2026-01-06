@@ -4,8 +4,9 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Home, Layers, Activity, Settings, HardDrive, Target, Calendar, Key, Shield, FileText, LogOut } from "lucide-react"
+import { Layers, Activity, Settings, HardDrive, Target, Calendar, Key, LogOut, Zap, LayoutGrid } from "lucide-react"
 import { api } from "@/lib/api"
+import Image from "next/image"
 import { toast } from "sonner"
 
 export function Sidebar() {
@@ -24,11 +25,6 @@ export function Sidebar() {
 
     const routes = [
         {
-            label: "Dashboard",
-            icon: Home,
-            href: "/",
-        },
-        {
             label: "Jobs",
             icon: Layers,
             href: "/jobs",
@@ -44,6 +40,11 @@ export function Sidebar() {
             href: "/targets",
         },
         {
+            label: "Actions",
+            icon: Zap,
+            href: "/actions",
+        },
+        {
             label: "Schedules",
             icon: Calendar,
             href: "/schedules",
@@ -53,16 +54,27 @@ export function Sidebar() {
             icon: Key,
             href: "/credentials",
         },
+        {
+            label: "Widgets",
+            icon: LayoutGrid,
+            href: "/widgets",
+        },
     ]
+
 
     const isSettingsActive = pathname.startsWith("/settings") || pathname.startsWith("/logs")
 
     return (
         <div className="space-y-4 py-4 flex flex-col h-full bg-sidebar text-sidebar-foreground">
             <div className="px-3 py-2 flex-1">
-                <Link href="/" className="flex items-center pl-3 mb-14">
-                    <div className="relative w-8 h-8 mr-4">
-                        <HardDrive className="w-8 h-8 text-primary" />
+                <Link href="/jobs" className="flex items-center pl-3 mb-14">
+                    <div className="relative w-16 h-16 mr-4">
+                        <Image
+                            src="/logo.svg"
+                            alt="Logo"
+                            fill
+                            className="object-contain"
+                        />
                     </div>
                     <h1 className="text-2xl font-bold">
                         grabarr
@@ -136,6 +148,15 @@ export function Sidebar() {
                                     Security
                                 </Link>
                                 <Link
+                                    href="/settings/api-docs"
+                                    className={cn(
+                                        "group flex items-center pl-11 pr-2 py-2 text-sm font-medium hover:text-white",
+                                        pathname === "/settings/api-docs" ? "text-primary" : "text-zinc-400"
+                                    )}
+                                >
+                                    API Reference
+                                </Link>
+                                <Link
                                     href="/logs"
                                     className={cn(
                                         "group flex items-center pl-11 pr-2 py-2 text-sm font-medium hover:text-white",
@@ -161,6 +182,6 @@ export function Sidebar() {
                     Logout
                 </Button>
             </div>
-        </div>
+        </div >
     )
 }

@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 const API_BASE_URL = "/api"
 
-export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
+export async function fetchAPI<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         credentials: "include", // Include cookies for session
@@ -73,6 +73,23 @@ export interface Job {
     allow_concurrent_runs?: boolean
     max_concurrent_runs?: number
     use_checksum?: boolean
+    actions?: JobAction[]
+}
+
+export interface Action {
+    id: number
+    name: string
+    type: string
+    config: any
+}
+
+export interface JobAction {
+    id?: number
+    tempId?: string
+    action_id: number
+    trigger: 'pre' | 'post_success' | 'post_fail' | 'post_always'
+    order: number
+    action?: Action
 }
 
 export interface SystemSettings {
@@ -114,19 +131,83 @@ export interface JobHistory {
     completed_at?: string
 }
 
+export interface EmbedWidget {
+    id: number
+    job_id: number
+    embed_key: string
+    name: string
+    width: number
+    height: number
+    config?: WidgetConfig
+    job?: Job
+    created_at?: string
+    updated_at?: string
+}
 
+export interface WidgetConfig {
+    fields: {
+        statusIndicator: { enabled: boolean; order: number }
+        progressBar: { enabled: boolean; order: number }
+        speed: { enabled: boolean; order: number }
+        bytesTransferred: { enabled: boolean; order: number }
+        eta: { enabled: boolean; order: number }
+        filesTransferred: { enabled: boolean; order: number }
+        currentFile: { enabled: boolean; order: number }
+        operationType: { enabled: boolean; order: number }
+        lastRunTime: { enabled: boolean; order: number }
+    }
+    style: {
+        backgroundColor: string
+        backgroundOpacity: number
+        textColor: string
+        secondaryTextColor: string
+        accentColor: string
+        borderRadius: number
+        borderColor: string
+        borderWidth: number
+        fontSize: number
+        theme: 'dark' | 'light' | 'transparent' | 'custom'
+        autoWidth?: boolean
+        autoHeight?: boolean
+        idleBehavior?: 'keep' | 'minimal'
+    }
+    layout: 'vertical' | 'horizontal' | 'compact'
+}
+
+
+// List query parameters for server-side search/sort
+export interface ListParams {
+    search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+    limit?: number
+    offset?: number
+}
+
+function buildQueryString(params?: ListParams): string {
+    if (!params) return ''
+    const searchParams = new URLSearchParams()
+    if (params.search) searchParams.set('search', params.search)
+    if (params.sort_by) searchParams.set('sort_by', params.sort_by)
+    if (params.sort_order) searchParams.set('sort_order', params.sort_order)
+    if (params.limit !== undefined) searchParams.set('limit', params.limit.toString())
+    if (params.offset !== undefined) searchParams.set('offset', params.offset.toString())
+    const qs = searchParams.toString()
+    return qs ? `?${qs}` : ''
+}
 
 export const api = {
-    getCredentials: () => fetchAPI("/credentials"),
+    getCredentials: (params?: ListParams) => fetchAPI(`/credentials${buildQueryString(params)}`),
     createCredential: (data: Omit<Credential, "id">) => fetchAPI("/credentials", { method: "POST", body: JSON.stringify(data) }),
     updateCredential: (id: number, data: Omit<Credential, "id">) => fetchAPI(`/credentials/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
-    getRemotes: () => fetchAPI("/remotes"),
+    getRemotes: (params?: ListParams) => fetchAPI(`/remotes${buildQueryString(params)}`),
     createRemote: (data: Omit<Remote, "id">) => fetchAPI("/remotes", { method: "POST", body: JSON.stringify(data) }),
     updateRemote: (id: number, data: Omit<Remote, "id">) => fetchAPI(`/remotes/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     testRemote: (data: Omit<Remote, "id">) => fetchAPI("/remotes/test", { method: "POST", body: JSON.stringify(data) }),
+    testRemoteById: (id: number) => fetchAPI(`/remotes/${id}/test`, { method: "POST" }),
 
-    getSchedules: () => fetchAPI("/schedules"),
+    getSchedules: (params?: ListParams) => fetchAPI(`/schedules${buildQueryString(params)}`),
     createSchedule: (data: Omit<Schedule, "id">) => fetchAPI("/schedules", { method: "POST", body: JSON.stringify(data) }),
     updateSchedule: (id: number, data: Omit<Schedule, "id">) => fetchAPI(`/schedules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteSchedule: (id: number) => fetchAPI(`/schedules/${id}`, { method: "DELETE" }),
@@ -135,7 +216,12 @@ export const api = {
     createAPIKey: (name: string) => fetchAPI("/security/keys", { method: "POST", body: JSON.stringify({ name }) }),
     deleteAPIKey: (id: number) => fetchAPI(`/security/keys/${id}`, { method: "DELETE" }),
 
-    getJobs: () => fetchAPI("/jobs"),
+    getActions: (params?: ListParams) => fetchAPI(`/actions${buildQueryString(params)}`),
+    createAction: (data: Omit<Action, "id">) => fetchAPI("/actions", { method: "POST", body: JSON.stringify(data) }),
+    updateAction: (id: number, data: Omit<Action, "id">) => fetchAPI(`/actions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    deleteAction: (id: number) => fetchAPI(`/actions/${id}`, { method: "DELETE" }),
+
+    getJobs: (params?: ListParams) => fetchAPI(`/jobs${buildQueryString(params)}`),
     createJob: (job: Omit<Job, "id">) => fetchAPI("/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,8 +243,8 @@ export const api = {
     deleteRemote: (id: number) => fetchAPI(`/remotes/${id}`, { method: "DELETE" }),
     browseRemote: (id: number, path: string) => fetchAPI(`/remotes/${id}/browse`, { method: "POST", body: JSON.stringify({ path }) }),
 
-    getHistory: () => fetchAPI("/history"),
-    getActivityLog: () => fetchAPI("/activity"),
+    getHistory: (params?: ListParams) => fetchAPI(`/history${buildQueryString(params)}`),
+    getActivityLog: (params?: ListParams) => fetchAPI(`/activity${buildQueryString(params)}`),
 
     // System
     backupSystem: (password: string) => fetch(`${API_BASE_URL}/system/backup`, {
@@ -189,5 +275,26 @@ export const api = {
     setupAdmin: (username: string, password: string) => fetchAPI("/auth/setup", {
         method: "POST",
         body: JSON.stringify({ username, password })
-    })
+    }),
+
+    async getDockerStatus(): Promise<{ available: boolean }> {
+        return fetchAPI<{ available: boolean }>('/system/docker/status')
+    },
+
+    async getDockerContainers(): Promise<{ id: string, name: string, image: string, status: string }[]> {
+        return fetchAPI<{ id: string, name: string, image: string, status: string }[]>('/system/docker/containers')
+    },
+
+    // Embed Widgets
+    getWidgets: (params?: ListParams): Promise<EmbedWidget[]> => fetchAPI(`/widgets${buildQueryString(params)}`),
+    getWidget: (id: number): Promise<EmbedWidget> => fetchAPI(`/widgets/${id}`),
+    getWidgetByKey: (key: string) => fetchAPI(`/widgets/by-key/${key}`),
+    getJobWidgets: (jobId: number): Promise<EmbedWidget[]> => fetchAPI(`/jobs/${jobId}/widgets`),
+    createWidget: (data: { job_id: number; name?: string; width?: number; height?: number; config?: Partial<WidgetConfig> }): Promise<EmbedWidget> =>
+        fetchAPI("/widgets", { method: "POST", body: JSON.stringify(data) }),
+    updateWidget: (id: number, data: { name?: string; width?: number; height?: number; config?: Partial<WidgetConfig> }): Promise<EmbedWidget> =>
+        fetchAPI(`/widgets/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    deleteWidget: (id: number) => fetchAPI(`/widgets/${id}`, { method: "DELETE" }),
+    rotateWidgetKey: (id: number): Promise<EmbedWidget> => fetchAPI(`/widgets/${id}/rotate-key`, { method: "POST" }),
 }
+

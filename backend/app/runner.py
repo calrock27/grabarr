@@ -1,12 +1,18 @@
 import logging
 from datetime import datetime, timezone
 from .db import AsyncSessionLocal
-from .models import Job, Remote, Credential, ScheduleTemplate, SystemSettings, JobHistory
+from .models import Job, Remote, Credential, ScheduleTemplate, SystemSettings, JobHistory, JobAction, Action
 from .rclone import rclone_manager
 from .events import event_manager
+from .crypto import decrypt_credential_data
 from sqlalchemy import select, delete, func
+from sqlalchemy.orm import selectinload
 import asyncio
 import json
+import httpx
+import re
+import shlex
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +73,140 @@ class JobRunner:
             # We don't remove from active_jobs here immediately, let the monitor loop detect failure/stop and clean up? 
             # Or remove it? Monitor loop might crash if we don't handle "job not found".
             # Actually rclone job/stop just requests stop. Monitor loop sees it finished.
+
+            # Actually rclone job/stop just requests stop. Monitor loop sees it finished.
+
+    async def _execute_actions(self, db_session, job: Job, trigger: str, context: dict):
+        """Execute actions for a specific trigger."""
+        try:
+            # Fetch actions if not already loaded available
+            # We fetch them freshly to ensure we have the Action object
+            stmt = (
+                select(JobAction)
+                .where(JobAction.job_id == job.id, JobAction.trigger == trigger)
+                .order_by(JobAction.order)
+                .options(selectinload(JobAction.action))
+            )
+            result = await db_session.execute(stmt)
+            job_actions = result.scalars().all()
+
+            if not job_actions:
+                return
+
+            logger.info(f"Executing {len(job_actions)} {trigger} actions for job {job.id}")
+
+            for ja in job_actions:
+                if not ja.action:
+                    continue
+                
+                try:
+                    await self._process_action(ja.action, context)
+                except Exception as e:
+                    logger.error(f"Action {ja.action.name} (ID: {ja.action.id}) failed: {e}")
+                    # TODO: Check if we should abort job on pre-run failure
+                    # if trigger == 'pre' and ja.abort_on_error: raise e
+
+        except Exception as e:
+            logger.error(f"Failed to execute actions for trigger {trigger}: {e}")
+
+    async def _process_action(self, action: Action, context: dict):
+        """Process a single action."""
+        logger.info(f"Running action: {action.name} ({action.type})")
+        
+        # Variable Substitution Helper
+        def substitute(text: str) -> str:
+            if not text or not isinstance(text, str): return text
+            for key, value in context.items():
+                # Handle nested keys e.g. job.name
+                if isinstance(value, dict):
+                    for subkey, subval in value.items():
+                        text = text.replace(f"{{{{ {key}.{subkey} }}}}", str(subval))
+                        text = text.replace(f"{{{{{key}.{subkey}}}}}", str(subval)) # handle no spaces
+                else:
+                    text = text.replace(f"{{{{ {key} }}}}", str(value))
+                    text = text.replace(f"{{{{{key}}}}}", str(value))
+            return text
+
+        config = action.config
+        
+        if action.type == 'webhook':
+            url = substitute(config.get('url'))
+            method = config.get('method', 'POST')
+            body = substitute(config.get('body', '{}'))
+            headers = {'Content-Type': 'application/json', 'User-Agent': 'Grabarr/1.0'}
+            
+            async with httpx.AsyncClient() as client:
+                resp = await client.request(method, url, content=body, headers=headers, timeout=10)
+                resp.raise_for_status()
+                
+        elif action.type == 'command':
+            cmd_str = substitute(config.get('command'))
+            cwd = substitute(config.get('cwd')) or None
+            timeout = int(config.get('timeout', 30))
+            
+            proc = await asyncio.create_subprocess_shell(
+                cmd_str,
+                cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                if proc.returncode != 0:
+                    raise Exception(f"Command failed with code {proc.returncode}: {stderr.decode()}")
+                logger.debug(f"Action command output: {stdout.decode()}")
+            except asyncio.TimeoutError:
+                proc.kill()
+                raise Exception("Command timed out")
+
+        elif action.type == 'delay':
+            seconds = int(config.get('seconds', 60))
+            logger.info(f"Action sleeping for {seconds}s")
+            await asyncio.sleep(seconds)
+
+        elif action.type == 'rclone':
+            # Execute raw RC command
+            cmd = substitute(config.get('command'))
+            params_str = substitute(config.get('params', '{}'))
+            params = json.loads(params_str)
+            await rclone_manager.call(cmd, params)
+
+        elif action.type == 'docker':
+            from .docker_client import docker_client
+            if not docker_client.is_available():
+                raise Exception("Docker execution unavailable")
+
+            container_ref = substitute(config.get('container_id'))
+            docker_cmd = config.get('action', 'restart')
+            
+            try:
+                # get() supports both ID and Name
+                container = docker_client.client.containers.get(container_ref)
+                
+                logger.info(f"Executing docker {docker_cmd} on {container.name} ({container.id})")
+                
+                if docker_cmd == 'start':
+                    container.start()
+                elif docker_cmd == 'stop':
+                    container.stop()
+                elif docker_cmd == 'restart':
+                    container.restart()
+                else:
+                    raise ValueError(f"Unknown docker action: {docker_cmd}")
+
+            except Exception as e:
+                # Catch docker.errors.NotFound etc
+                raise Exception(f"Docker action failed: {str(e)}")
+
+        # Notification logic can be added here later
+        elif action.type == 'notification':
+            # Basic webhook implementation for notification type if webhook_url is present
+            webhook_url = substitute(config.get('webhook_url'))
+            if webhook_url:
+                message = substitute(config.get('message', 'Job Finished'))
+                # Simple POST
+                async with httpx.AsyncClient() as client:
+                    await client.post(webhook_url, json={"content": message, "title": "Grabarr Notification"})
 
     async def run_job(self, job_id: int, execution_type: str = "manual"):
         """Run a job. execution_type can be: 'schedule', 'manual', or 'api'"""
@@ -136,6 +276,26 @@ class JobRunner:
             if job.dest_path:
                 dst_fs = f"{dst_fs.rstrip('/')}/{job.dest_path.strip('/')}"
             
+            # Apply Job-specific Dest Path
+            if job.dest_path:
+                dst_fs = f"{dst_fs.rstrip('/')}/{job.dest_path.strip('/')}"
+            
+            # Context for actions
+            action_context = {
+                "job": {
+                    "id": job.id,
+                    "name": job.name,
+                    "operation": job.operation,
+                    "source_path": job.source_path,
+                    "dest_path": job.dest_path
+                },
+                "source": { "name": source.name, "type": source.type },
+                "dest": { "name": dest.name, "type": dest.type }
+            }
+
+            # EXECUTE PRE-RUN ACTIONS
+            await self._execute_actions(db, job, 'pre', action_context)
+
             # Handle copy_mode: 
             # 'contents' means add trailing slash to copy only contents (rclone default usually)
             # 'folder' means we want to copy the folder itself, so we append the folder name to destination
@@ -397,6 +557,37 @@ class JobRunner:
                         completed_at=datetime.now(timezone.utc)
                     )
                     
+
+                    
+                    # ACTION CONTEXT UPDATE
+                    action_context = {
+                        "job": { "id": db_job_id }, # Partial context as we are in monitor loop
+                        "stats": {
+                            "status": final_status,
+                            "error": error_msg,
+                            "transferred_files": len(files_list) if files_list else 0,
+                            "total_bytes": stats.get('totalBytes', 0) if stats else 0
+                        }
+                    }
+
+                    # EXECUTE POST-RUN ACTIONS
+                    # We need a fresh DB session for actions as we are in a loop
+                    async with AsyncSessionLocal() as action_db:
+                         # Re-fetch job to get actions
+                         job_res = await action_db.execute(select(Job).where(Job.id == db_job_id))
+                         job_obj = job_res.scalars().first()
+                         if job_obj:
+                             # Enrich context
+                             action_context["job"]["name"] = job_obj.name
+                             
+                             # Always run 'post_always'
+                             await self._execute_actions(action_db, job_obj, 'post_always', action_context)
+                             
+                             if final_status == "success":
+                                 await self._execute_actions(action_db, job_obj, 'post_success', action_context)
+                             else:
+                                 await self._execute_actions(action_db, job_obj, 'post_fail', action_context)
+
                     await event_manager.publish(json.dumps({
 
                         "type": "job_update",
@@ -465,18 +656,39 @@ class JobRunner:
         if remote.type == "local":
             return remote.config.get("path", "/") 
         elif remote.type == "s3":
-            # Construct connection string
-            # :s3,provider=AWS,access_key_id=...,secret_access_key=...,endpoint=...:bucket
-            if not credential:
-                return f":s3,env_auth=false:{remote.config.get('bucket')}"
+            # Construct connection string for S3-compatible storage
+            # :s3,provider=AWS,access_key_id=...,secret_access_key=...,endpoint=...,region=...:bucket
             
-            data = credential.data
-            access = data.get('access_key_id', '')
-            secret = data.get('secret_access_key', '')
-            endpoint = data.get('endpoint', '')
+            provider = remote.config.get('provider', 'AWS')
+            endpoint = remote.config.get('endpoint', '')
+            region = remote.config.get('region', '')
+            bucket = remote.config.get('bucket', '')
             
-            # Escape commas in values if necessary, but for MVP assume simple chars
-            return f":s3,provider=Minio,access_key_id='{access}',secret_access_key='{secret}',endpoint='{endpoint}',s3_force_path_style='true':{remote.config.get('bucket')}"
+            params = [f"provider={provider}"]
+            
+            if credential:
+                # Decrypt credential data
+                data = decrypt_credential_data(credential.data)
+                access = data.get('access_key_id', '')
+                secret = data.get('secret_access_key', '')
+                if access:
+                    params.append(f"access_key_id='{access}'")
+                if secret:
+                    params.append(f"secret_access_key='{secret}'")
+            else:
+                params.append("env_auth=false")
+            
+            if endpoint:
+                params.append(f"endpoint='{endpoint}'")
+            
+            if region:
+                params.append(f"region='{region}'")
+            
+            # Force path style for non-AWS providers (MinIO, R2, etc.)
+            if provider not in ['AWS']:
+                params.append("force_path_style=true")
+            
+            return f":s3,{','.join(params)}:{bucket}"
         
         # Generic helper for connection strings
         params = []
@@ -494,8 +706,10 @@ class JobRunner:
 
         # User/Pass
         if credential:
-            user = credential.data.get("user", "") or credential.data.get("username", "")
-            password = credential.data.get("password", "")
+            # Decrypt credential data
+            cred_data = decrypt_credential_data(credential.data)
+            user = cred_data.get("user", "") or cred_data.get("username", "")
+            password = cred_data.get("password", "")
             if user:
                  params.append(f"user=\"{user}\"")
             

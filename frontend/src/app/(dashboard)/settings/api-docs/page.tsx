@@ -60,14 +60,19 @@ const API_CATEGORIES: EndpointCategory[] = [
         endpoints: [
             {
                 method: "GET",
-                path: "/credentials/",
+                path: "/credentials",
                 description: "List all credentials (sensitive data masked)",
                 requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ],
                 responseSchema: { type: "array", items: { id: "number", name: "string", type: "string", data: "object" } }
             },
             {
                 method: "POST",
-                path: "/credentials/",
+                path: "/credentials",
                 description: "Create a new credential",
                 requiresAuth: false,
                 bodySchema: { name: "string", type: "string (ssh_key|password|api_token)", data: "object" }
@@ -96,13 +101,18 @@ const API_CATEGORIES: EndpointCategory[] = [
         endpoints: [
             {
                 method: "GET",
-                path: "/remotes/",
+                path: "/remotes",
                 description: "List all configured remotes",
-                requiresAuth: false
+                requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ]
             },
             {
                 method: "POST",
-                path: "/remotes/",
+                path: "/remotes",
                 description: "Create a new remote",
                 requiresAuth: false,
                 bodySchema: { name: "string", type: "string (sftp|local|s3|etc)", credential_id: "number?", config: "object" }
@@ -131,11 +141,65 @@ const API_CATEGORIES: EndpointCategory[] = [
             },
             {
                 method: "POST",
+                path: "/remotes/{remote_id}/test",
+                description: "Test an existing saved remote by its ID",
+                requiresAuth: false,
+                pathParams: [{ name: "remote_id", type: "integer", required: true, description: "Remote ID" }]
+            },
+            {
+                method: "POST",
                 path: "/remotes/{remote_id}/browse",
                 description: "Browse files on a remote",
                 requiresAuth: false,
                 pathParams: [{ name: "remote_id", type: "integer", required: true, description: "Remote ID" }],
                 bodySchema: { path: "string" }
+            }
+        ]
+    },
+    {
+        name: "Actions",
+        icon: <Activity className="w-4 h-4" />,
+        description: "Manage reusable automation actions (webhooks, scripts, notifications)",
+        endpoints: [
+            {
+                method: "GET",
+                path: "/actions/",
+                description: "List all configured actions",
+                requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ]
+            },
+            {
+                method: "POST",
+                path: "/actions/",
+                description: "Create a new action",
+                requiresAuth: false,
+                bodySchema: { name: "string", type: "string (webhook|script|docker|notify)", config: "object" }
+            },
+            {
+                method: "GET",
+                path: "/actions/{action_id}",
+                description: "Get a specific action by ID",
+                requiresAuth: false,
+                pathParams: [{ name: "action_id", type: "integer", required: true, description: "Action ID" }]
+            },
+            {
+                method: "PUT",
+                path: "/actions/{action_id}",
+                description: "Update an existing action",
+                requiresAuth: false,
+                pathParams: [{ name: "action_id", type: "integer", required: true, description: "Action ID" }],
+                bodySchema: { name: "string?", type: "string?", config: "object?" }
+            },
+            {
+                method: "DELETE",
+                path: "/actions/{action_id}",
+                description: "Delete an action",
+                requiresAuth: false,
+                pathParams: [{ name: "action_id", type: "integer", required: true, description: "Action ID" }]
             }
         ]
     },
@@ -148,7 +212,12 @@ const API_CATEGORIES: EndpointCategory[] = [
                 method: "GET",
                 path: "/jobs/",
                 description: "List all jobs with current status",
-                requiresAuth: false
+                requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ]
             },
             {
                 method: "POST",
@@ -166,7 +235,8 @@ const API_CATEGORIES: EndpointCategory[] = [
                     excludes: "string[]?",
                     transfer_method: "string? (direct|proxy)",
                     copy_mode: "string? (folder|contents)",
-                    use_checksum: "boolean? (use hash comparison)"
+                    use_checksum: "boolean?",
+                    actions: "JobActionCreate[]?"
                 }
             },
             {
@@ -190,7 +260,7 @@ const API_CATEGORIES: EndpointCategory[] = [
                 description: "Partially update a job",
                 requiresAuth: false,
                 pathParams: [{ name: "job_id", type: "integer", required: true, description: "Job ID" }],
-                bodySchema: { name: "string?", enabled: "boolean?", schedule: "string?" }
+                bodySchema: { name: "string?", enabled: "boolean?", schedule: "string?", actions: "JobActionCreate[]?" }
             },
             {
                 method: "DELETE",
@@ -229,13 +299,6 @@ const API_CATEGORIES: EndpointCategory[] = [
                 pathParams: [{ name: "job_id", type: "integer", required: true, description: "Job ID" }]
             },
             {
-                method: "POST",
-                path: "/jobs/test",
-                description: "Test job configuration (dry run)",
-                requiresAuth: false,
-                bodySchema: { source_remote_id: "number", dest_remote_id: "number", operation: "string" }
-            },
-            {
                 method: "GET",
                 path: "/jobs/{job_id}/secure_info",
                 description: "Get job info with embed key authentication",
@@ -254,7 +317,12 @@ const API_CATEGORIES: EndpointCategory[] = [
                 method: "GET",
                 path: "/schedules/",
                 description: "List all schedule templates",
-                requiresAuth: false
+                requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ]
             },
             {
                 method: "POST",
@@ -308,6 +376,48 @@ const API_CATEGORIES: EndpointCategory[] = [
         ]
     },
     {
+        name: "Authentication",
+        icon: <Shield className="w-4 h-4" />,
+        description: "User authentication and session management",
+        endpoints: [
+            {
+                method: "GET",
+                path: "/auth/status",
+                description: "Check if authentication is set up and required",
+                requiresAuth: false,
+                responseSchema: { setup_complete: "boolean", requires_auth: "boolean" }
+            },
+            {
+                method: "POST",
+                path: "/auth/setup",
+                description: "Initial admin setup (only works if no admin exists)",
+                requiresAuth: false,
+                bodySchema: { username: "string (default: admin)", password: "string" }
+            },
+            {
+                method: "POST",
+                path: "/auth/login",
+                description: "Authenticate and get session token",
+                requiresAuth: false,
+                bodySchema: { username: "string", password: "string" },
+                responseSchema: { success: "boolean", message: "string", username: "string?" }
+            },
+            {
+                method: "POST",
+                path: "/auth/logout",
+                description: "Log out and clear session",
+                requiresAuth: false
+            },
+            {
+                method: "GET",
+                path: "/auth/me",
+                description: "Get current authenticated user info",
+                requiresAuth: false,
+                responseSchema: { username: "string", is_admin: "boolean" }
+            }
+        ]
+    },
+    {
         name: "History & Activity",
         icon: <History className="w-4 h-4" />,
         description: "View job execution history and activity logs",
@@ -317,14 +427,26 @@ const API_CATEGORIES: EndpointCategory[] = [
                 path: "/history",
                 description: "Get job execution history",
                 requiresAuth: false,
-                queryParams: [{ name: "limit", type: "integer", required: false, description: "Max entries (default: 50)" }]
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by status or job name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: desc)" },
+                    { name: "limit", type: "integer", required: false, description: "Max entries (default: 50)" },
+                    { name: "offset", type: "integer", required: false, description: "Pagination offset (default: 0)" }
+                ]
             },
             {
                 method: "GET",
                 path: "/activity",
-                description: "Get system activity log",
+                description: "Get system activity log (CRUD operations)",
                 requiresAuth: false,
-                queryParams: [{ name: "limit", type: "integer", required: false, description: "Max entries (default: 50)" }]
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by action or entity type" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: desc)" },
+                    { name: "limit", type: "integer", required: false, description: "Max entries (default: 50)" },
+                    { name: "offset", type: "integer", required: false, description: "Pagination offset (default: 0)" }
+                ]
             }
         ]
     },
@@ -337,7 +459,8 @@ const API_CATEGORIES: EndpointCategory[] = [
                 method: "GET",
                 path: "/settings/system",
                 description: "Get system settings",
-                requiresAuth: false
+                requiresAuth: false,
+                responseSchema: { failure_cooldown_seconds: "number", max_history_entries: "number" }
             },
             {
                 method: "PUT",
@@ -375,8 +498,83 @@ const API_CATEGORIES: EndpointCategory[] = [
                 responseSchema: { type: "SSE stream", events: ["job_status", "job_progress", "job_complete"] }
             }
         ]
+    },
+    {
+        name: "Widgets",
+        icon: <Activity className="w-4 h-4" />,
+        description: "Customizable embed widgets for displaying job status on external dashboards",
+        endpoints: [
+            {
+                method: "GET",
+                path: "/widgets",
+                description: "List all embed widgets",
+                requiresAuth: false,
+                queryParams: [
+                    { name: "search", type: "string", required: false, description: "Search term to filter by name" },
+                    { name: "sort_by", type: "string", required: false, description: "Column to sort by" },
+                    { name: "sort_order", type: "string", required: false, description: "Sort direction (asc/desc, default: asc)" }
+                ]
+            },
+            {
+                method: "POST",
+                path: "/widgets",
+                description: "Create a new embed widget",
+                requiresAuth: false,
+                bodySchema: {
+                    job_id: "number (required)",
+                    name: "string?",
+                    width: "number? (default: 350)",
+                    height: "number? (default: 150)",
+                    config: "object? (fields, style, layout)"
+                }
+            },
+            {
+                method: "GET",
+                path: "/widgets/{widget_id}",
+                description: "Get a specific widget by ID",
+                requiresAuth: false,
+                pathParams: [{ name: "widget_id", type: "integer", required: true, description: "Widget ID" }]
+            },
+            {
+                method: "PUT",
+                path: "/widgets/{widget_id}",
+                description: "Update an existing widget",
+                requiresAuth: false,
+                pathParams: [{ name: "widget_id", type: "integer", required: true, description: "Widget ID" }],
+                bodySchema: { name: "string?", width: "number?", height: "number?", config: "object?" }
+            },
+            {
+                method: "DELETE",
+                path: "/widgets/{widget_id}",
+                description: "Delete a widget",
+                requiresAuth: false,
+                pathParams: [{ name: "widget_id", type: "integer", required: true, description: "Widget ID" }]
+            },
+            {
+                method: "POST",
+                path: "/widgets/{widget_id}/rotate-key",
+                description: "Rotate the embed key, invalidating old embed URLs",
+                requiresAuth: false,
+                pathParams: [{ name: "widget_id", type: "integer", required: true, description: "Widget ID" }]
+            },
+            {
+                method: "GET",
+                path: "/widgets/by-key/{embed_key}",
+                description: "Get widget configuration by embed key (used by embed pages)",
+                requiresAuth: false,
+                pathParams: [{ name: "embed_key", type: "string", required: true, description: "Unique embed key" }]
+            },
+            {
+                method: "GET",
+                path: "/jobs/{job_id}/widgets",
+                description: "List all widgets for a specific job",
+                requiresAuth: false,
+                pathParams: [{ name: "job_id", type: "integer", required: true, description: "Job ID" }]
+            }
+        ]
     }
 ]
+
 
 // Method color mapping
 const METHOD_COLORS: Record<string, string> = {

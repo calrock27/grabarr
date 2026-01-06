@@ -52,9 +52,38 @@ async def sync_scheduler_jobs():
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Job).where(Job.enabled == True))
         jobs = result.scalars().all()
+        
+        # Load all schedule templates for lookup
+        from .models import ScheduleTemplate
+        templates_result = await session.execute(select(ScheduleTemplate))
+        templates = {t.name: t for t in templates_result.scalars().all()}
+        
         for job in jobs:
             if job.schedule and job.schedule != "Manual":
-                add_scheduler_job(job.id, job.schedule)
+                # Check if schedule is a template name or a cron expression
+                cron_expr = job.schedule
+                
+                if job.schedule in templates:
+                    # It's a template name, get the cron from config
+                    template = templates[job.schedule]
+                    if template.schedule_type == 'cron' and template.config.get('cron'):
+                        cron_expr = template.config['cron']
+                    elif template.schedule_type == 'interval':
+                        # Convert interval to cron (approximate)
+                        minutes = template.config.get('minutes', 0)
+                        hours = template.config.get('hours', 0)
+                        if minutes and minutes > 0:
+                            cron_expr = f"*/{minutes} * * * *"
+                        elif hours and hours > 0:
+                            cron_expr = f"0 */{hours} * * *"
+                        else:
+                            logger.warning(f"Invalid interval config for template {template.name}")
+                            continue
+                    else:
+                        logger.warning(f"Unknown schedule type for template {template.name}: {template.schedule_type}")
+                        continue
+                
+                add_scheduler_job(job.id, cron_expr)
 
 def start_scheduler():
     scheduler.start()

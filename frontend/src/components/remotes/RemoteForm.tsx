@@ -9,6 +9,51 @@ import { api, type Remote, type Credential } from "@/lib/api"
 import { toast } from "sonner"
 import { Loader2, CheckCircle, AlertCircle, Play } from "lucide-react"
 
+// Helper function to get endpoint placeholder based on provider
+function getEndpointPlaceholder(provider: string = "AWS", region: string = ""): string {
+    switch (provider) {
+        case "AWS":
+            return "https://s3.amazonaws.com (optional)"
+        case "Cloudflare":
+            return "https://<account-id>.r2.cloudflarestorage.com"
+        case "Backblaze":
+            return `https://s3.${region || "us-west-004"}.backblazeb2.com`
+        case "Wasabi":
+            return `https://s3.${region || "us-east-1"}.wasabisys.com`
+        case "DigitalOcean":
+            return `https://${region || "nyc3"}.digitaloceanspaces.com`
+        case "Linode":
+            return `https://${region || "us-east-1"}.linodeobjects.com`
+        case "Vultr":
+            return `https://${region || "ewr1"}.vultrobjects.com`
+        case "Scaleway":
+            return `https://s3.${region || "fr-par"}.scw.cloud`
+        case "Oracle":
+            return "https://<namespace>.compat.objectstorage.<region>.oraclecloud.com"
+        case "Minio":
+            return "https://minio.example.com:9000"
+        default:
+            return "https://s3-compatible-endpoint.com"
+    }
+}
+
+// Helper function to get region placeholder based on provider
+function getRegionPlaceholder(provider: string = "AWS"): string {
+    switch (provider) {
+        case "Cloudflare":
+            return "auto"
+        case "Vultr":
+            return "ewr1"
+        case "Scaleway":
+            return "fr-par"
+        case "Oracle":
+            return "us-phoenix-1"
+        default:
+            return "us-east-1"
+    }
+}
+
+
 interface RemoteFormProps {
     initialData?: Remote
     credentials: Credential[]
@@ -24,6 +69,15 @@ export function RemoteForm({ initialData, credentials, onSubmit, onCancel }: Rem
 
     // Config State - Flattened for form usage, will be packed on submit
     const [config, setConfig] = useState<Record<string, string>>(initialData?.config || {})
+
+    // Sync state when initialData changes (for edit mode)
+    useEffect(() => {
+        setName(initialData?.name || "")
+        setType(initialData?.type || "s3")
+        setCredentialId(initialData?.credential_id?.toString() || "none")
+        setConfig(initialData?.config || {})
+        setTestStatus('idle')
+    }, [initialData])
 
     // Reset config when type changes (optional, or keep generic fields)
     const handleTypeChange = (val: string) => {
@@ -122,28 +176,97 @@ export function RemoteForm({ initialData, credentials, onSubmit, onCancel }: Rem
 
                 {type === 's3' && (
                     <>
+                        <div className="space-y-2">
+                            <Label>Provider</Label>
+                            <Select value={config.provider || "AWS"} onValueChange={(v) => {
+                                updateConfig("provider", v)
+                                // Set sensible defaults based on provider
+                                if (v === "Cloudflare") {
+                                    updateConfig("region", "auto")
+                                } else if (v === "Backblaze") {
+                                    updateConfig("region", "")
+                                } else if (v === "Wasabi") {
+                                    updateConfig("region", "us-east-1")
+                                } else if (v === "Linode") {
+                                    updateConfig("region", "us-east-1")
+                                } else if (v === "Vultr") {
+                                    updateConfig("region", "ewr1")
+                                } else if (v === "Scaleway") {
+                                    updateConfig("region", "fr-par")
+                                } else if (v === "Oracle") {
+                                    updateConfig("region", "us-phoenix-1")
+                                }
+                            }}>
+                                <SelectTrigger className="bg-muted/50 border-gray-700">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-card border-gray-700 text-white">
+                                    <SelectItem value="AWS">Amazon S3</SelectItem>
+                                    <SelectItem value="Cloudflare">Cloudflare R2</SelectItem>
+                                    <SelectItem value="Backblaze">Backblaze B2</SelectItem>
+                                    <SelectItem value="Wasabi">Wasabi</SelectItem>
+                                    <SelectItem value="DigitalOcean">DigitalOcean Spaces</SelectItem>
+                                    <SelectItem value="Linode">Linode Object Storage</SelectItem>
+                                    <SelectItem value="Vultr">Vultr Object Storage</SelectItem>
+                                    <SelectItem value="Scaleway">Scaleway Object Storage</SelectItem>
+                                    <SelectItem value="Oracle">Oracle Cloud Object Storage</SelectItem>
+                                    <SelectItem value="Minio">MinIO (Self-Hosted)</SelectItem>
+                                    <SelectItem value="Other">Other S3-Compatible</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {config.provider === "Cloudflare" && (
+                                <p className="text-xs text-blue-400">💡 Use S3 Access Key credentials from your <a href="https://dash.cloudflare.com/?to=/:account/r2/api-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-300">R2 dashboard</a></p>
+                            )}
+                            {config.provider === "Oracle" && (
+                                <p className="text-xs text-blue-400">💡 Requires S3 Compatibility API credentials from your <a href="https://cloud.oracle.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-300">Oracle Cloud console</a></p>
+                            )}
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Provider</Label>
-                                <Input value={config.provider || "AWS"} onChange={e => updateConfig("provider", e.target.value)} className="bg-muted/50 border-gray-700" />
+                                <Label>Endpoint {config.provider === "AWS" ? "(Optional)" : "(Required)"}</Label>
+                                <Input
+                                    value={config.endpoint || ""}
+                                    onChange={e => updateConfig("endpoint", e.target.value)}
+                                    placeholder={getEndpointPlaceholder(config.provider, config.region)}
+                                    className="bg-muted/50 border-gray-700"
+                                />
+                                {config.provider === "Cloudflare" && (
+                                    <p className="text-xs text-muted-foreground">Format: https://&lt;account-id&gt;.r2.cloudflarestorage.com</p>
+                                )}
+                                {config.provider === "Oracle" && (
+                                    <p className="text-xs text-muted-foreground">Format: https://&lt;namespace&gt;.compat.objectstorage.&lt;region&gt;.oraclecloud.com</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label>Region</Label>
-                                <Input value={config.region || ""} onChange={e => updateConfig("region", e.target.value)} placeholder="us-east-1" className="bg-muted/50 border-gray-700" />
+                                <Input
+                                    value={config.region || ""}
+                                    onChange={e => updateConfig("region", e.target.value)}
+                                    placeholder={getRegionPlaceholder(config.provider)}
+                                    className="bg-muted/50 border-gray-700"
+                                />
+                                {config.provider === "Cloudflare" && (
+                                    <p className="text-xs text-muted-foreground">R2 uses "auto" for region</p>
+                                )}
+                                {config.provider === "Linode" && (
+                                    <p className="text-xs text-muted-foreground">e.g., us-east-1, eu-central-1, ap-south-1</p>
+                                )}
+                                {config.provider === "Scaleway" && (
+                                    <p className="text-xs text-muted-foreground">e.g., fr-par, nl-ams, pl-waw</p>
+                                )}
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label>Endpoint (Optional)</Label>
-                            <Input value={config.endpoint || ""} onChange={e => updateConfig("endpoint", e.target.value)} placeholder="https://..." className="bg-muted/50 border-gray-700" />
-                        </div>
-                        <div className="space-y-2">
                             <Label>Bucket</Label>
-                            <Input value={config.bucket || ""} onChange={e => updateConfig("bucket", e.target.value)} className="bg-muted/50 border-gray-700" />
+                            <Input value={config.bucket || ""} onChange={e => updateConfig("bucket", e.target.value)} placeholder="my-bucket" className="bg-muted/50 border-gray-700" />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Storage Class</Label>
-                            <Input value={config.storage_class || ""} onChange={e => updateConfig("storage_class", e.target.value)} placeholder="STANDARD" className="bg-muted/50 border-gray-700" />
-                        </div>
+                        {config.provider !== "Cloudflare" && (
+                            <div className="space-y-2">
+                                <Label>Storage Class (Optional)</Label>
+                                <Input value={config.storage_class || ""} onChange={e => updateConfig("storage_class", e.target.value)} placeholder="STANDARD" className="bg-muted/50 border-gray-700" />
+                            </div>
+                        )}
                     </>
                 )}
 

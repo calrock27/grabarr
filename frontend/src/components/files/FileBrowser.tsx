@@ -160,7 +160,7 @@ export function FileBrowser({
             <div className="px-2 py-1 border-t border-border/50 shrink-0 bg-zinc-800/30">
                 <div className="flex gap-px p-px bg-zinc-900 rounded">
                     <button
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'folder' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:text-white'
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'folder' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
                             }`}
                         onClick={() => setCopyMode('folder')}
                     >
@@ -168,7 +168,7 @@ export function FileBrowser({
                         Folder
                     </button>
                     <button
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'contents' ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:text-white'
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'contents' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
                             }`}
                         onClick={() => setCopyMode('contents')}
                     >

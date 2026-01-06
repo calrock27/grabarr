@@ -56,14 +56,34 @@ class Job(Base):
     
     source = relationship("Remote", foreign_keys=[source_remote_id])
     dest = relationship("Remote", foreign_keys=[dest_remote_id])
+    
+    actions = relationship("JobAction", back_populates="job", cascade="all, delete-orphan")
+
+class Action(Base):
+    __tablename__ = "actions"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    type = Column(String)  # webhook, command, notification, rclone, docker, delay
+    config = Column(JSON) # Type-specific config
+
+class JobAction(Base):
+    __tablename__ = "job_actions"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey('jobs.id'))
+    action_id = Column(Integer, ForeignKey('actions.id'))
+    trigger = Column(String) # pre, post_success, post_fail, post_always
+    order = Column(Integer, default=0)
+    
+    job = relationship("Job", back_populates="actions")
+    action = relationship("Action")
 
 class JobHistory(Base):
     __tablename__ = "job_history"
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("jobs.id"))
+    job_id = Column(Integer, ForeignKey("jobs.id"), index=True)
     status = Column(String) # success, failed
     details = Column(JSON) # raw rclone stats
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     # New fields for Activity page
     avg_speed = Column(Integer, nullable=True)  # bytes/sec
@@ -97,7 +117,7 @@ class ActivityLog(Base):
     entity_type = Column(String) # job, remote, system
     entity_id = Column(Integer, nullable=True) # Optional link to entity
     details = Column(JSON) # Snapshot or diff
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 class SystemSettings(Base):
     __tablename__ = "system_settings"
@@ -111,3 +131,18 @@ class AdminUser(Base):
     username = Column(String, unique=True, default="admin")
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class EmbedWidget(Base):
+    """Customizable widget configurations for embedding job status in external dashboards."""
+    __tablename__ = "embed_widgets"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    embed_key = Column(String(64), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(100), default="Default Widget")
+    width = Column(Integer, default=350)
+    height = Column(Integer, default=150)
+    config = Column(JSON)  # Stores field visibility, colors, layout settings
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    job = relationship("Job")

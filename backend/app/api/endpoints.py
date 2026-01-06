@@ -5,8 +5,11 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
+from sqlalchemy import delete
 from ..db import engine, AsyncSessionLocal, get_db
-from ..models import Credential, Remote, Job, JobHistory, ScheduleTemplate, ActivityLog, APIKey, SystemSettings, AdminUser
+from ..models import Credential, Remote, Job, JobHistory, ScheduleTemplate, ActivityLog, APIKey, SystemSettings, AdminUser, Action, JobAction, EmbedWidget
+from ..crypto import encrypt_credential_data, decrypt_credential_data, get_key_file_path
+from ..list_params import apply_list_params
 
 from ..scheduler import scheduler, get_job_next_run, add_scheduler_job, remove_scheduler_job
 
@@ -51,23 +54,33 @@ class RemoteRead(BaseModel):
     id: int
     name: str
     type: str
+    credential_id: Optional[int] = None
     config: dict
     class Config:
         orm_mode = True
 
 # --- Credentials ---
-@router.post("/credentials/", response_model=CredentialRead)
+@router.post("/credentials", response_model=CredentialRead)
 async def create_credential(cred: CredentialCreate, db: AsyncSession = Depends(get_db)):
-    db_cred = Credential(name=cred.name, type=cred.type, data=cred.data)
+    # Encrypt credential data before storing
+    encrypted_data = encrypt_credential_data(cred.data)
+    db_cred = Credential(name=cred.name, type=cred.type, data=encrypted_data)
     db.add(db_cred)
     await log_activity(db, "create", "credential", None, {"name": cred.name})
     await db.commit()
     await db.refresh(db_cred)
-    return db_cred
+    return CredentialRead(id=db_cred.id, name=db_cred.name, type=db_cred.type, data={})
 
-@router.get("/credentials/", response_model=List[CredentialRead])
-async def list_credentials(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Credential))
+@router.get("/credentials", response_model=List[CredentialRead])
+async def list_credentials(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(Credential)
+    query = apply_list_params(query, Credential, search, sort_by, sort_order, ["name", "type"])
+    result = await db.execute(query)
     creds = result.scalars().all()
     
     # Mask sensitive data
@@ -75,10 +88,11 @@ async def list_credentials(db: AsyncSession = Depends(get_db)):
     SENSITIVE_KEYS = ["password", "private_key", "passphrase", "secret_access_key", "token", "api_token"]
     
     for cred in creds:
-        # Create a copy of the data dict to avoid mutating the ORM object in session (though we are reading)
-        # We need to return a Pydantic model compatible dict or object.
-        # Since we are returning a list of Read models, we can construct them.
-        data_copy = cred.data.copy() if cred.data else {}
+        # Decrypt credential data
+        decrypted_data = decrypt_credential_data(cred.data)
+        data_copy = decrypted_data.copy() if decrypted_data else {}
+        
+        # Mask sensitive fields
         for key in data_copy:
             if key in SENSITIVE_KEYS and data_copy[key]:
                 data_copy[key] = "******"
@@ -106,42 +120,23 @@ async def update_credential(credential_id: int, cred: CredentialCreate, db: Asyn
             db_cred.name = cred.name
             db_cred.type = cred.type
             
-            # Smart Update for Data
-            # If value is "******", keep existing.
-            current_data = db_cred.data or {}
+            # Decrypt existing data for comparison
+            current_data = decrypt_credential_data(db_cred.data)
             new_data = cred.data or {}
-            merged_data = current_data.copy()
             
-            # We want to replace current with new, UNLESS new is masked.
-            # But we also handle keys that might be added or removed? 
-            # Ideally we just iterate new_data.
-            for key, value in new_data.items():
-                if value == "******":
-                    # Keep existing value if present
-                    if key in current_data:
-                        merged_data[key] = current_data[key]
-                    else:
-                        # This shouldn't happen if frontend is well-behaved, but if new key is starred, 
-                        # we can't recover it. Assume "empty" or ignore.
-                        merged_data[key] = "" 
-                else:
-                    merged_data[key] = value
-            
-            # Also remove keys that are NOT in new_data? 
-            # Or just replace entire dict with merged?
-            # Re-construct data to match new_data structure but with unmasked values.
+            # Smart Update for Data - If value is "******", keep existing.
             final_data = {}
             for key in new_data:
                 if new_data[key] == "******":
+                    # Keep existing value if present
                     final_data[key] = current_data.get(key, "")
                 else:
                     final_data[key] = new_data[key]
             
-            db_cred.data = final_data
+            # Encrypt and store
+            db_cred.data = encrypt_credential_data(final_data)
             
-            await log_activity(session, "update", "credential", credential_id, {"name": cred.name}) # Don't log data
-            
-            # Session commits on exit
+            await log_activity(session, "update", "credential", credential_id, {"name": cred.name})
             
     # Return (masked)
     data_copy = final_data.copy()
@@ -158,7 +153,7 @@ async def update_credential(credential_id: int, cred: CredentialCreate, db: Asyn
     )
 
 # --- Remotes ---
-@router.post("/remotes/", response_model=RemoteRead)
+@router.post("/remotes", response_model=RemoteRead)
 async def create_remote(remote: RemoteCreate, db: AsyncSession = Depends(get_db)):
     db_remote = Remote(name=remote.name, type=remote.type, credential_id=remote.credential_id, config=remote.config)
     db.add(db_remote)
@@ -167,9 +162,16 @@ async def create_remote(remote: RemoteCreate, db: AsyncSession = Depends(get_db)
     await db.refresh(db_remote)
     return db_remote
 
-@router.get("/remotes/", response_model=List[RemoteRead])
-async def list_remotes(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Remote))
+@router.get("/remotes", response_model=List[RemoteRead])
+async def list_remotes(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(Remote)
+    query = apply_list_params(query, Remote, search, sort_by, sort_order, ["name", "type"])
+    result = await db.execute(query)
     return result.scalars().all()
 
 @router.post("/remotes/test")
@@ -189,6 +191,36 @@ async def test_remote(remote: RemoteCreate, db: AsyncSession = Depends(get_db)):
     
     try:
         fs_string = await job_runner.get_fs_string(transient_remote, cred)
+        
+        # Test listing
+        await rclone_manager.call("operations/list", {
+            "fs": fs_string,
+            "remote": "",
+            "opt": { "max_depth": 1 }
+        })
+        return {"success": True, "message": "Connection verified"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@router.post("/remotes/{remote_id}/test")
+async def test_remote_by_id(remote_id: int, db: AsyncSession = Depends(get_db)):
+    """Test an existing saved remote by its ID."""
+    from ..runner import job_runner, rclone_manager
+    
+    # Get the remote
+    result = await db.execute(select(Remote).where(Remote.id == remote_id))
+    remote = result.scalar_one_or_none()
+    if not remote:
+        raise HTTPException(status_code=404, detail="Remote not found")
+    
+    # Get associated credential if any
+    cred = None
+    if remote.credential_id:
+        cred_result = await db.execute(select(Credential).where(Credential.id == remote.credential_id))
+        cred = cred_result.scalar_one_or_none()
+    
+    try:
+        fs_string = await job_runner.get_fs_string(remote, cred)
         
         # Test listing
         await rclone_manager.call("operations/list", {
@@ -254,7 +286,97 @@ async def browse_remote(remote_id: int, payload: BrowseRequest, db: AsyncSession
     except Exception as e:
          raise HTTPException(status_code=500, detail=str(e))
 
+# --- Actions ---
+class ActionCreate(BaseModel):
+    name: str
+    type: str 
+    config: dict
+
+class ActionUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    config: Optional[dict] = None
+
+class ActionRead(BaseModel):
+    id: int
+    name: str
+    type: str
+    config: dict
+    class Config:
+        from_attributes = True
+
+@router.post("/actions/", response_model=ActionRead)
+async def create_action(action: ActionCreate, db: AsyncSession = Depends(get_db)):
+    db_action = Action(name=action.name, type=action.type, config=action.config)
+    db.add(db_action)
+    await log_activity(db, "create", "action", None, {"name": action.name})
+    await db.commit()
+    await db.refresh(db_action)
+    return db_action
+
+@router.get("/actions/", response_model=List[ActionRead])
+async def list_actions(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(Action)
+    query = apply_list_params(query, Action, search, sort_by, sort_order, ["name", "type"])
+    result = await db.execute(query)
+    return result.scalars().all()
+
+@router.get("/actions/{action_id}", response_model=ActionRead)
+async def get_action(action_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Action).where(Action.id == action_id))
+    action = result.scalar_one_or_none()
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+    return action
+
+@router.put("/actions/{action_id}", response_model=ActionRead)
+async def update_action(action_id: int, action: ActionUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Action).where(Action.id == action_id))
+    db_action = result.scalar_one_or_none()
+    if not db_action:
+        raise HTTPException(status_code=404, detail="Action not found")
+    
+    if action.name: db_action.name = action.name
+    if action.type: db_action.type = action.type
+    if action.config: db_action.config = action.config
+    
+    await log_activity(db, "update", "action", action_id, {"name": db_action.name})
+    await db.commit()
+    await db.refresh(db_action)
+    return db_action
+
+@router.delete("/actions/{action_id}")
+async def delete_action(action_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Action).where(Action.id == action_id))
+    db_action = result.scalar_one_or_none()
+    if not db_action:
+        raise HTTPException(status_code=404, detail="Action not found")
+    
+    await db.delete(db_action)
+    await log_activity(db, "delete", "action", action_id, {"name": db_action.name})
+    await db.commit()
+    return {"ok": True}
+
 # --- Jobs ---
+class JobActionCreate(BaseModel):
+    action_id: int
+    trigger: str 
+    order: Optional[int] = 0
+
+class JobActionRead(BaseModel):
+    id: int
+    action_id: int
+    trigger: str
+    order: int
+    action: ActionRead # Include nested action details
+    class Config:
+        from_attributes = True
+
 class JobCreate(BaseModel):
     name: str
     source_remote_id: int
@@ -269,6 +391,7 @@ class JobCreate(BaseModel):
     allow_concurrent_runs: Optional[bool] = False
     max_concurrent_runs: Optional[int] = 1
     use_checksum: Optional[bool] = False
+    actions: Optional[List[JobActionCreate]] = []
 
 class JobUpdate(BaseModel):
     name: Optional[str] = None
@@ -283,6 +406,7 @@ class JobUpdate(BaseModel):
     allow_concurrent_runs: Optional[bool] = None
     max_concurrent_runs: Optional[int] = None
     use_checksum: Optional[bool] = None
+    actions: Optional[List[JobActionCreate]] = None
 
 class JobRead(BaseModel):
     id: int
@@ -305,6 +429,7 @@ class JobRead(BaseModel):
     allow_concurrent_runs: Optional[bool] = False
     max_concurrent_runs: Optional[int] = 1
     use_checksum: Optional[bool] = False
+    actions: List[JobActionRead] = []
     class Config:
         from_attributes = True
 
@@ -326,55 +451,63 @@ async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db)):
     )
 
     db.add(db_job)
-    await log_activity(db, "create", "job", None, {"name": job.name}) # ID not avail until refresh/commit but session handles it? No, need flush.
+    await db.flush() # flush to get ID
+    
+    if job.actions:
+        for action in job.actions:
+            db.add(JobAction(job_id=db_job.id, action_id=action.action_id, trigger=action.trigger, order=action.order))
+            
+    await log_activity(db, "create", "job", db_job.id, {"name": job.name})
     await db.commit()
-    await db.refresh(db_job)
-    # Update log with ID? Or just log after commit?
-    # If we log before commit, it's part of transaction. ID might be None? 
-    # SQLAlchemy usually assigns ID on flush. 
-    # Let's log *after* refresh? But then we need another commit for the log?
-    # Actually, best pattern: 
-    # db.add(job) -> await db.flush() -> get ID -> log -> commit.
+    await db.refresh(db_job) 
     
-    # But for simplicity, I'll log *without* ID in the join table if straightforward, 
-    # or just log generic "created job X".
-    # Wait, ActivityLog is in the SAME session.
-    # So:
-    # db.add(db_job)
-    # await db.flush()
-    # await log_activity(db, "create", "job", db_job.id, {"name": job.name})
-    # await db.commit()
+    # Eager load actions for response
+    # Actually refresh might not load eager, but let's trust default lazy loading or explicit query if failing
+    # For simplicity, returning db_job. Since lazy loading is async in async session, we might need select with options.
+    # But usually refresh works enough for simple cases. Let's see. 
+    # To be safe for `response_model`, we should verify `actions` are loaded.
+    # AsyncSQLAlchemy relationships require explicit loading often.
+    # Let's simple return db_job and if actions missing, we add selectinload.
+    # Ideally:
+    # stmt = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action)).where(Job.id == db_job.id)
+    # But let's try basic first or do a reload query.
     
-    # EXCEPT: endpoints usually do db.add -> db.commit -> db.refresh.
-    # Refactoring slightly to allow logging.
+    # Reload with actions
+    from sqlalchemy.orm import selectinload
+    stmt = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action)).where(Job.id == db_job.id)
+    result = await db.execute(stmt)
+    db_job_loaded = result.scalar_one()
     
-    # For now, let's try to just add log to session.
-    # Since ID is autoincrement, it's not available until flush.
-    
-    # Revised:
-    # db.add(db_job)
-    # await db.flush()
-    # await db.refresh(db_job)
-    # await log_activity(db, "create", "job", db_job.id, {"name": db_job.name})
-    # await db.commit()
-    
-    return db_job
+    return db_job_loaded
 
 @router.get("/jobs/", response_model=List[JobRead])
-@router.get("/jobs/", response_model=List[JobRead])
-async def list_jobs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Job))
+async def list_jobs(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy.orm import selectinload
+    query = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action))
+    query = apply_list_params(query, Job, search, sort_by, sort_order, ["name", "operation"])
+    result = await db.execute(query)
     jobs = result.scalars().all()
+    
+    if not jobs:
+        return []
+
+    # 2. Fetch latest history entry for each job in one query
+    # We use a subquery to get the max ID for each job_id, then join back
+    from sqlalchemy import func
+    subq = select(JobHistory.job_id, func.max(JobHistory.id).label("max_id")).group_by(JobHistory.job_id).subquery()
+    hist_stmt = select(JobHistory).join(subq, JobHistory.id == subq.c.max_id)
+    hist_res = await db.execute(hist_stmt)
+    latest_histories = {h.job_id: h for h in hist_res.scalars().all()}
     
     jobs_with_status = []
     for job in jobs:
-        # Fetch latest status
-        stmt = select(JobHistory).where(JobHistory.job_id == job.id).order_by(JobHistory.timestamp.desc()).limit(1)
-        hist_res = await db.execute(stmt)
-        last_run = hist_res.scalar_one_or_none()
+        last_run = latest_histories.get(job.id)
         
-        # We can construct JobRead from attributes then add status, 
-        # or manually construct dict. Manual is safer to ensure we have all fields.
         j_dict = {
             "id": job.id,
             "name": job.name,
@@ -392,7 +525,11 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
             "last_run": job.last_run,
             "next_run": get_job_next_run(job.id),
             "last_status": last_run.status if last_run else "idle",
-            "last_error": last_run.details.get("error") if last_run and last_run.details else None
+            "last_error": last_run.details.get("error") if last_run and last_run.details else None,
+            "allow_concurrent_runs": job.allow_concurrent_runs,
+            "max_concurrent_runs": job.max_concurrent_runs,
+            "use_checksum": job.use_checksum,
+            "actions": job.actions # Actions are loaded via selectinload
         }
         jobs_with_status.append(j_dict)
         
@@ -400,7 +537,8 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
 
 @router.get("/jobs/{job_id}", response_model=JobRead)
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(select(Job).options(selectinload(Job.actions).selectinload(JobAction.action)).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -426,7 +564,11 @@ async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
         "last_run": job.last_run,
         "next_run": get_job_next_run(job.id),
         "last_status": last_run.status if last_run else "idle",
-        "last_error": last_run.details.get("error") if last_run and last_run.details else None
+        "last_error": last_run.details.get("error") if last_run and last_run.details else None,
+        "allow_concurrent_runs": job.allow_concurrent_runs,
+        "max_concurrent_runs": job.max_concurrent_runs,
+        "use_checksum": job.use_checksum,
+        "actions": job.actions # Actions are loaded via selectinload
     }
     return j_dict
 
@@ -442,7 +584,17 @@ async def patch_job(job_id: int, job_update: JobUpdate, db: AsyncSession = Depen
             
             update_data = job_update.dict(exclude_unset=True)
             for field, value in update_data.items():
+                if field == "actions":
+                    continue # Handle actions separately
                 setattr(db_job, field, value)
+            
+            # Handle actions
+            if job_update.actions is not None:
+                # Delete existing actions
+                await session.execute(delete(JobAction).where(JobAction.job_id == job_id))
+                # Add new ones
+                for action in job_update.actions:
+                    session.add(JobAction(job_id=job_id, action_id=action.action_id, trigger=action.trigger, order=action.order))
             
             # Handle scheduler synchronization if schedule or enabled changed
             if "schedule" in update_data or "enabled" in update_data:
@@ -453,10 +605,43 @@ async def patch_job(job_id: int, job_update: JobUpdate, db: AsyncSession = Depen
             
             await log_activity(session, "patch", "job", job_id, update_data)
     
-    # Reload with status
-    return await get_job(job_id, db)
+    # Reload with status and actions
+    from sqlalchemy.orm import selectinload
+    stmt = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action)).where(Job.id == job_id)
+    result = await db.execute(stmt)
+    db_job_loaded = result.scalar_one()
+    
+    # Re-fetch history for status
+    stmt_hist = select(JobHistory).where(JobHistory.job_id == db_job_loaded.id).order_by(JobHistory.timestamp.desc()).limit(1)
+    hist_res = await db.execute(stmt_hist)
+    last_run = hist_res.scalar_one_or_none()
+
+    return JobRead(
+        id=db_job_loaded.id,
+        name=db_job_loaded.name,
+        source_remote_id=db_job_loaded.source_remote_id,
+        dest_remote_id=db_job_loaded.dest_remote_id,
+        operation=db_job_loaded.operation,
+        schedule=db_job_loaded.schedule,
+        source_path=db_job_loaded.source_path,
+        dest_path=db_job_loaded.dest_path,
+        excludes=db_job_loaded.excludes,
+        embed_key=db_job_loaded.embed_key,
+        transfer_method=db_job_loaded.transfer_method or 'direct',
+        copy_mode=db_job_loaded.copy_mode or 'folder',
+        enabled=db_job_loaded.enabled if db_job_loaded.enabled is not None else True,
+        last_run=db_job_loaded.last_run,
+        next_run=get_job_next_run(db_job_loaded.id),
+        last_status=last_run.status if last_run else "idle",
+        last_error=last_run.details.get("error") if last_run and last_run.details else None,
+        allow_concurrent_runs=db_job_loaded.allow_concurrent_runs,
+        max_concurrent_runs=db_job_loaded.max_concurrent_runs,
+        use_checksum=db_job_loaded.use_checksum,
+        actions=db_job_loaded.actions
+    )
 
 from ..runner import job_runner
+from ..docker_client import docker_client
 
 @router.post("/jobs/{job_id}/run", dependencies=[Depends(verify_api_key)])
 async def run_job_endpoint(job_id: int, execution_type: str = "api", db: AsyncSession = Depends(get_db)):
@@ -504,7 +689,8 @@ async def delete_remote(remote_id: int):
             stmt = select(Remote).where(Remote.id == remote_id)
             result = await session.execute(stmt)
             obj = result.scalar_one_or_none()
-            # Removed redundant check
+            if not obj: # Added missing check
+                raise HTTPException(status_code=404, detail="Remote not found")
             await session.delete(obj)
             await log_activity(session, "delete", "remote", remote_id, {"name": obj.name})
     return {"message": "Remote deleted"}
@@ -573,25 +759,55 @@ async def update_job(job_id: int, job: JobCreate, db: AsyncSession = Depends(get
             db_job.excludes = job.excludes
             db_job.transfer_method = job.transfer_method
             db_job.copy_mode = job.copy_mode
+            db_job.allow_concurrent_runs = job.allow_concurrent_runs
+            db_job.max_concurrent_runs = job.max_concurrent_runs
+            db_job.use_checksum = job.use_checksum
             
             # If schedule changed, logic to update scheduler would be needed here. 
             # For now, simplistic update.
             
+            if job.actions is not None:
+                # Delete existing actions
+                await session.execute(delete(JobAction).where(JobAction.job_id == job_id))
+                # Add new ones
+                for action in job.actions:
+                    session.add(JobAction(job_id=job_id, action_id=action.action_id, trigger=action.trigger, order=action.order))
+            
             await log_activity(session, "update", "job", job_id, job.dict()) # Convert Pydantic to dict
     
+    # Reload with actions
+    from sqlalchemy.orm import selectinload
+    stmt = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action)).where(Job.id == job_id)
+    result = await db.execute(stmt)
+    db_job_loaded = result.scalar_one()
+
+    # Re-fetch history for status
+    stmt_hist = select(JobHistory).where(JobHistory.job_id == db_job_loaded.id).order_by(JobHistory.timestamp.desc()).limit(1)
+    hist_res = await db.execute(stmt_hist)
+    last_run = hist_res.scalar_one_or_none()
+    
     return JobRead(
-        id=job_id,
-        name=job.name,
-        source_remote_id=job.source_remote_id,
-        dest_remote_id=job.dest_remote_id,
-        operation=job.operation,
-        schedule=job.schedule,
-        source_path=job.source_path,
-        dest_path=job.dest_path,
-        excludes=job.excludes,
-        embed_key=db_job.embed_key,
-        transfer_method=job.transfer_method,
-        copy_mode=job.copy_mode
+        id=db_job_loaded.id,
+        name=db_job_loaded.name,
+        source_remote_id=db_job_loaded.source_remote_id,
+        dest_remote_id=db_job_loaded.dest_remote_id,
+        operation=db_job_loaded.operation,
+        schedule=db_job_loaded.schedule,
+        source_path=db_job_loaded.source_path,
+        dest_path=db_job_loaded.dest_path,
+        excludes=db_job_loaded.excludes,
+        embed_key=db_job_loaded.embed_key,
+        transfer_method=db_job_loaded.transfer_method or 'direct',
+        copy_mode=db_job_loaded.copy_mode or 'folder',
+        enabled=db_job_loaded.enabled if db_job_loaded.enabled is not None else True,
+        last_run=db_job_loaded.last_run,
+        next_run=get_job_next_run(db_job_loaded.id),
+        last_status=last_run.status if last_run else "idle",
+        last_error=last_run.details.get("error") if last_run and last_run.details else None,
+        allow_concurrent_runs=db_job_loaded.allow_concurrent_runs,
+        max_concurrent_runs=db_job_loaded.max_concurrent_runs,
+        use_checksum=db_job_loaded.use_checksum,
+        actions=db_job_loaded.actions
     )
 
 @router.post("/jobs/{job_id}/rotate_key", response_model=JobRead)
@@ -666,9 +882,16 @@ async def create_schedule(sched: ScheduleCreate, db: AsyncSession = Depends(get_
     return db_sched
 
 @router.get("/schedules/", response_model=List[ScheduleRead])
-async def list_schedules(db: AsyncSession = Depends(get_db)):
+async def list_schedules(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
     from ..models import ScheduleTemplate
-    result = await db.execute(select(ScheduleTemplate))
+    query = select(ScheduleTemplate)
+    query = apply_list_params(query, ScheduleTemplate, search, sort_by, sort_order, ["name"])
+    result = await db.execute(query)
     return result.scalars().all()
 
 @router.put("/schedules/{schedule_id}", response_model=ScheduleRead)
@@ -773,21 +996,42 @@ class JobHistoryRead(BaseModel):
         from_attributes = True
 
 @router.get("/history", response_model=List[JobHistoryRead])
-async def list_history(limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def list_history(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db)
+):
     from ..models import JobHistory, Job
     from sqlalchemy.orm import joinedload
+    from sqlalchemy import or_
     
-    # We want to return history with job names. 
-    # Pydantic model has optional job_name. We can construct it or use a property.
-    # Easiest: Load relation, and map it. 
-    # Actually, Pydantic's from_attributes works best with direct attributes.
-    # Let's adjust query to handle this or just return the relation and use a nested model? 
-    # Let's use a nested simplified model.
-    # But wait, JobHistoryRead.job_name is not on the SQLAlchemy model directly.
-    # Stick to returning nested JobRead object if possible, or just raw data.
-    # Let's define a nested model.
+    stmt = select(JobHistory).options(joinedload(JobHistory.job))
     
-    stmt = select(JobHistory).options(joinedload(JobHistory.job)).order_by(JobHistory.timestamp.desc()).limit(limit)
+    # Apply search filter on status and job name via join
+    if search:
+        search_term = f"%{search}%"
+        # Filter by status or by job name through the relationship
+        stmt = stmt.where(
+            or_(
+                JobHistory.status.ilike(search_term),
+                JobHistory.job.has(Job.name.ilike(search_term))
+            )
+        )
+    
+    # Apply sorting
+    if sort_by and hasattr(JobHistory, sort_by):
+        column = getattr(JobHistory, sort_by)
+        if sort_order == "asc":
+            stmt = stmt.order_by(column.asc())
+        else:
+            stmt = stmt.order_by(column.desc())
+    else:
+        stmt = stmt.order_by(JobHistory.timestamp.desc())
+    
+    stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     history_items = result.scalars().all()
     
@@ -822,10 +1066,40 @@ class ActivityLogRead(BaseModel):
         from_attributes = True
 
 @router.get("/activity", response_model=List[ActivityLogRead])
-async def list_activity(limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def list_activity(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db)
+):
     from ..models import ActivityLog
-    stmt = select(ActivityLog).order_by(ActivityLog.timestamp.desc()).limit(limit)
-    result = await db.execute(stmt)
+    query = select(ActivityLog)
+    
+    # Apply search filter
+    if search:
+        from sqlalchemy import or_
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                ActivityLog.action.ilike(search_term),
+                ActivityLog.entity_type.ilike(search_term)
+            )
+        )
+    
+    # Apply sorting
+    if sort_by and hasattr(ActivityLog, sort_by):
+        column = getattr(ActivityLog, sort_by)
+        if sort_order == "asc":
+            query = query.order_by(column.asc())
+        else:
+            query = query.order_by(column.desc())
+    else:
+        query = query.order_by(ActivityLog.timestamp.desc())
+    
+    query = query.limit(limit).offset(offset)
+    result = await db.execute(query)
     return result.scalars().all()
 
 async def log_activity(db: AsyncSession, action: str, entity_type: str, entity_id: Optional[int], details: dict = None):
@@ -877,6 +1151,11 @@ async def create_backup(payload: dict):
         
         if os.path.exists(rclone_conf):
             shutil.copy2(rclone_conf, os.path.join(tmp_dir, "rclone.conf"))
+
+        # 3. Copy encryption key file
+        key_file = get_key_file_path()
+        if os.path.exists(key_file):
+            shutil.copy2(key_file, os.path.join(tmp_dir, ".grabarr_key"))
 
         # Archive and Encrypt
         backup_path = os.path.join(tmp_dir, "grabarr_backup.enc")
@@ -955,6 +1234,20 @@ async def restore_backup(password: str = Form(...), file: UploadFile = File(...)
              # Create dir if not exists
              os.makedirs(os.path.dirname(target_conf), exist_ok=True)
              shutil.move(restored_conf, target_conf)
+
+        # 3. Restore encryption key file
+        restored_key = os.path.join(tmp_dir, ".grabarr_key")
+        if os.path.exists(restored_key):
+            key_target = get_key_file_path()
+            key_dir = os.path.dirname(key_target)
+            if key_dir:
+                os.makedirs(key_dir, exist_ok=True)
+            shutil.move(restored_key, key_target)
+            # Set restrictive permissions
+            try:
+                os.chmod(key_target, 0o600)
+            except OSError:
+                pass
 
         return {"message": "Restore successful. Please restart the backend."}
 
@@ -1116,3 +1409,185 @@ async def get_me(request: Request, user: dict = Depends(get_current_user)):
         "username": user["username"],
         "is_api_key": user.get("is_api_key", False)
     }
+
+# --- Embed Widgets ---
+class EmbedWidgetCreate(BaseModel):
+    job_id: int
+    name: Optional[str] = "Default Widget"
+    width: Optional[int] = 350
+    height: Optional[int] = 150
+    config: Optional[dict] = None
+
+class EmbedWidgetUpdate(BaseModel):
+    name: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    config: Optional[dict] = None
+
+class JobBasicRead(BaseModel):
+    id: int
+    name: str
+    operation: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class EmbedWidgetRead(BaseModel):
+    id: int
+    job_id: int
+    embed_key: str
+    name: str
+    width: int
+    height: int
+    config: Optional[dict] = None
+    job: Optional[JobBasicRead] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+@router.get("/widgets", response_model=List[EmbedWidgetRead])
+async def list_widgets(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc",
+    db: AsyncSession = Depends(get_db)
+):
+    """List all embed widgets."""
+    from sqlalchemy.orm import joinedload
+    query = select(EmbedWidget).options(joinedload(EmbedWidget.job))
+    query = apply_list_params(query, EmbedWidget, search, sort_by, sort_order, ["name"])
+    result = await db.execute(query)
+    return result.scalars().unique().all()
+
+@router.get("/widgets/{widget_id}", response_model=EmbedWidgetRead)
+async def get_widget(widget_id: int, db: AsyncSession = Depends(get_db)):
+    """Get a specific widget by ID."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.id == widget_id))
+    widget = result.scalar_one_or_none()
+    if not widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    return widget
+
+@router.get("/widgets/by-key/{embed_key}")
+async def get_widget_by_key(embed_key: str, db: AsyncSession = Depends(get_db)):
+    """Get widget by its embed key (used by embed pages)."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.embed_key == embed_key))
+    widget = result.scalar_one_or_none()
+    if not widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    # Also fetch job info for the embed
+    job_result = await db.execute(select(Job).where(Job.id == widget.job_id))
+    job = job_result.scalar_one_or_none()
+    
+    return {
+        "id": widget.id,
+        "job_id": widget.job_id,
+        "embed_key": widget.embed_key,
+        "name": widget.name,
+        "width": widget.width,
+        "height": widget.height,
+        "config": widget.config,
+        "job": {
+            "id": job.id,
+            "name": job.name,
+            "operation": job.operation
+        } if job else None
+    }
+
+@router.post("/widgets", response_model=EmbedWidgetRead)
+async def create_widget(widget: EmbedWidgetCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new embed widget."""
+    # Verify job exists
+    job_result = await db.execute(select(Job).where(Job.id == widget.job_id))
+    if not job_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    db_widget = EmbedWidget(
+        job_id=widget.job_id,
+        name=widget.name,
+        width=widget.width,
+        height=widget.height,
+        config=widget.config or {
+            "fields": {
+                "jobName": {"enabled": True, "order": 0},
+                "statusIndicator": {"enabled": True, "order": 1},
+                "progressBar": {"enabled": True, "order": 2},
+                "speed": {"enabled": True, "order": 3},
+                "bytesTransferred": {"enabled": True, "order": 4},
+                "eta": {"enabled": False, "order": 5},
+                "filesTransferred": {"enabled": False, "order": 6},
+                "currentFile": {"enabled": False, "order": 7},
+                "operationType": {"enabled": False, "order": 8}
+            },
+            "style": {
+                "backgroundColor": "#111827",
+                "backgroundOpacity": 1.0,
+                "textColor": "#ffffff",
+                "secondaryTextColor": "#9ca3af",
+                "accentColor": "#8b5cf6",
+                "borderRadius": 8,
+                "borderColor": "#374151",
+                "borderWidth": 1,
+                "fontSize": 14,
+                "theme": "dark"
+            },
+            "layout": "vertical"
+        }
+    )
+    db.add(db_widget)
+    await log_activity(db, "create", "widget", None, {"job_id": widget.job_id, "name": widget.name})
+    await db.commit()
+    await db.refresh(db_widget)
+    return db_widget
+
+@router.put("/widgets/{widget_id}", response_model=EmbedWidgetRead)
+async def update_widget(widget_id: int, widget: EmbedWidgetUpdate, db: AsyncSession = Depends(get_db)):
+    """Update an existing widget."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.id == widget_id))
+    db_widget = result.scalar_one_or_none()
+    if not db_widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    update_data = widget.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_widget, field, value)
+    
+    await log_activity(db, "update", "widget", widget_id, update_data)
+    await db.commit()
+    await db.refresh(db_widget)
+    return db_widget
+
+@router.delete("/widgets/{widget_id}")
+async def delete_widget(widget_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a widget."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.id == widget_id))
+    db_widget = result.scalar_one_or_none()
+    if not db_widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    await db.delete(db_widget)
+    await log_activity(db, "delete", "widget", widget_id, {"name": db_widget.name})
+    await db.commit()
+    return {"ok": True}
+
+@router.post("/widgets/{widget_id}/rotate-key", response_model=EmbedWidgetRead)
+async def rotate_widget_key(widget_id: int, db: AsyncSession = Depends(get_db)):
+    """Rotate the embed key for a widget, invalidating old embed URLs."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.id == widget_id))
+    db_widget = result.scalar_one_or_none()
+    if not db_widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    import uuid
+    db_widget.embed_key = str(uuid.uuid4())
+    await log_activity(db, "rotate_key", "widget", widget_id, {})
+    await db.commit()
+    await db.refresh(db_widget)
+    return db_widget
+
+@router.get("/jobs/{job_id}/widgets", response_model=List[EmbedWidgetRead])
+async def list_job_widgets(job_id: int, db: AsyncSession = Depends(get_db)):
+    """List all widgets for a specific job."""
+    result = await db.execute(select(EmbedWidget).where(EmbedWidget.job_id == job_id))
+    return result.scalars().all()

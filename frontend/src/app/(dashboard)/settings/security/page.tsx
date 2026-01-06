@@ -79,17 +79,17 @@ export default function SecurityPage() {
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Security</h2>
-                    <p className="text-gray-400">Manage API Keys for external integration.</p>
+                    <p className="text-muted-foreground">Manage API Keys for external integration.</p>
                 </div>
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                     <DialogTrigger asChild>
-                        <Button className="bg-emerald-600 hover:bg-emerald-700">
-                            <Plus className="mr-2 h-4 w-4" /> Generate New Key
+                        <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
+                            <Plus className="mr-2 h-4 w-4" /> New API Key
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="bg-[#1f2937] border-gray-700 text-white">
+                    <DialogContent className="bg-card border-border text-card-foreground">
                         <DialogHeader>
-                            <DialogTitle>Generate Application API Key</DialogTitle>
+                            <DialogTitle>New API Key</DialogTitle>
                             <DialogDescription>
                                 This key grants full access to trigger jobs via the API.
                             </DialogDescription>
@@ -97,7 +97,7 @@ export default function SecurityPage() {
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
                                 <Label>Key Name</Label>
-                                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Home Assistant" className="bg-gray-900 border-gray-700" />
+                                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Home Assistant" className="bg-muted/50 border-input" />
                             </div>
                         </div>
                         <DialogFooter>
@@ -108,54 +108,53 @@ export default function SecurityPage() {
             </div>
 
             {newKey && (
-                <Card className="bg-emerald-900/20 border-emerald-500/50 mb-6">
+                <Card className="bg-primary/10 border-primary/50 mb-6">
                     <CardContent className="p-6">
-                        <h3 className="text-lg font-medium text-emerald-400 mb-2">API Key Generated</h3>
-                        <p className="text-sm text-gray-400 mb-4">Make sure to copy your API key now. You won't be able to see it again!</p>
+                        <h3 className="text-lg font-medium text-primary mb-2">API Key Generated</h3>
+                        <p className="text-sm text-muted-foreground mb-4">Make sure to copy your API key now. You won't be able to see it again!</p>
                         <div className="flex items-center gap-2">
-                            <Input value={newKey} readOnly className="font-mono bg-black/50 border-emerald-500/30 text-emerald-200" />
-                            <Button size="icon" variant="outline" className="border-emerald-500/30 hover:bg-emerald-500/20" onClick={() => navigator.clipboard.writeText(newKey)}>
+                            <Input value={newKey} readOnly className="font-mono bg-black/50 border-primary/30 text-primary" />
+                            <Button size="icon" variant="outline" className="border-primary/30 hover:bg-primary/20" onClick={() => navigator.clipboard.writeText(newKey)}>
                                 <Copy className="h-4 w-4" />
                             </Button>
                         </div>
-                        <Button variant="ghost" className="mt-4 text-sm text-gray-400 hover:text-white p-0 h-auto" onClick={() => setNewKey(null)}>
+                        <Button variant="ghost" className="mt-4 text-sm text-muted-foreground hover:text-white p-0 h-auto" onClick={() => setNewKey(null)}>
                             Close
                         </Button>
                     </CardContent>
                 </Card>
             )}
 
-            <Card className="bg-[#111827] border-gray-800">
+            <Card className="bg-card border-border">
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-gray-800 hover:bg-transparent">
-                                <TableHead className="text-gray-400">Name</TableHead>
-                                <TableHead className="text-gray-400">Key Prefix</TableHead>
-                                <TableHead className="text-gray-400">Created</TableHead>
-                                <TableHead className="text-right text-gray-400">Actions</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground">Name</TableHead>
+                                <TableHead className="text-muted-foreground">Key Prefix</TableHead>
+                                <TableHead className="text-muted-foreground">Created</TableHead>
+                                <TableHead className="text-right text-muted-foreground">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">Loading...</TableCell>
+                                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
                                 </TableRow>
                             ) : keys.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">No API keys found.</TableCell>
+                                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No API keys found.</TableCell>
                                 </TableRow>
                             ) : (
                                 keys.map((k) => (
-                                    <TableRow key={k.id} className="border-gray-800 hover:bg-gray-900/50">
-                                        <TableCell className="font-medium flex items-center">
-                                            <Key className="mr-2 h-4 w-4 text-gray-500" />
+                                    <TableRow key={k.id} className="border-border hover:bg-muted/50">
+                                        <TableCell className="font-medium">
                                             {k.name}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs text-gray-400">
+                                        <TableCell className="font-mono text-xs text-muted-foreground">
                                             {k.key.substring(0, 10)}...
                                         </TableCell>
-                                        <TableCell className="text-sm text-gray-400">
+                                        <TableCell className="text-sm text-muted-foreground">
                                             {new Date(k.created_at?.includes('Z') ? k.created_at : k.created_at + 'Z').toLocaleDateString()}
                                         </TableCell>
                                         <TableCell className="text-right">

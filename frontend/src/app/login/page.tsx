@@ -2,11 +2,19 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import Image from "next/image"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, LogIn, AlertCircle } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api"
@@ -48,55 +56,94 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-            <Card className="w-full max-w-md bg-card border-zinc-800">
-                <CardHeader className="text-center">
-                    <div className="mx-auto mb-4 w-16 h-16 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                        <span className="text-2xl font-bold text-white">G</span>
-                    </div>
-                    <CardTitle className="text-2xl">Welcome to Grabarr</CardTitle>
-                    <CardDescription>Sign in to access your dashboard</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleLogin} className="space-y-4">
+        <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center p-4">
+            <Card className="w-full max-w-sm bg-[#0F0F0F] border-none overflow-hidden shadow-2xl">
+                <CardContent className="p-8">
+                    <form onSubmit={handleLogin} className="space-y-6">
+                        <div className="flex flex-col items-center mb-8">
+                            <div className="w-16 h-16 relative">
+                                <Image
+                                    src="/logo.svg"
+                                    alt="Grabarr Logo"
+                                    fill
+                                    className="object-contain"
+                                    priority
+                                />
+                            </div>
+                        </div>
+
                         {error && (
-                            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                                 {error}
                             </div>
                         )}
 
-                        <div className="space-y-2">
-                            <Label htmlFor="username">Username</Label>
-                            <Input
-                                id="username"
-                                type="text"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                                placeholder="admin"
-                                className="bg-zinc-900 border-zinc-700"
-                                autoComplete="username"
-                                required
-                            />
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Input
+                                    id="username"
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="Username"
+                                    className="bg-[#2A2A2A] border-zinc-700 text-zinc-200 h-12"
+                                    autoComplete="username"
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Password"
+                                    className="bg-[#2A2A2A] border-zinc-700 text-zinc-200 h-12"
+                                    autoComplete="current-password"
+                                    required
+                                />
+                            </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                className="bg-zinc-900 border-zinc-700"
-                                autoComplete="current-password"
-                                required
-                            />
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="remember"
+                                    className="border-zinc-700 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                                />
+                                <Label
+                                    htmlFor="remember"
+                                    className="text-zinc-300 text-sm font-normal cursor-pointer"
+                                >
+                                    Remember Me
+                                </Label>
+                            </div>
+
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="text-zinc-500 text-sm hover:text-zinc-400 transition-colors"
+                                        >
+                                            Forgot your password?
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-[#404040] text-zinc-100 border-zinc-700 p-3">
+                                        <p className="text-xs mb-1">Run this command in your shell to reset:</p>
+                                        <code className="text-primary-foreground bg-primary/20 px-1 py-0.5 rounded">
+                                            python3 -m app.cli reset-password
+                                        </code>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
 
                         <Button
                             type="submit"
-                            className="w-full bg-primary hover:bg-primary/90"
+                            className="w-full bg-primary hover:bg-primary/90 text-white font-medium h-12 text-base"
                             disabled={loading}
                         >
                             {loading ? (
@@ -105,10 +152,7 @@ export default function LoginPage() {
                                     Signing in...
                                 </>
                             ) : (
-                                <>
-                                    <LogIn className="w-4 h-4 mr-2" />
-                                    Sign In
-                                </>
+                                "Login"
                             )}
                         </Button>
                     </form>

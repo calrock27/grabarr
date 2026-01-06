@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { api, type Credential } from "@/lib/api"
+import { api, type Credential, type ListParams } from "@/lib/api"
 import {
     Table,
     TableBody,
@@ -11,7 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Plus, Trash2, Key } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -33,6 +33,14 @@ export default function CredentialsPage() {
     const [loading, setLoading] = useState(true)
     const [open, setOpen] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
+    const [searchValue, setSearchValue] = useState("")
+    const [debouncedSearch, setDebouncedSearch] = useState("")
+
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(searchValue), 300)
+        return () => clearTimeout(timer)
+    }, [searchValue])
 
     // Columns
     const columns: ColumnDef<Credential>[] = [
@@ -41,7 +49,6 @@ export default function CredentialsPage() {
             header: ({ column }) => <SortableHeader column={column}>Name</SortableHeader>,
             cell: ({ row }) => (
                 <div className="font-medium flex items-center">
-                    <Key className="w-4 h-4 mr-2 text-yellow-500" />
                     {row.getValue("name")}
                 </div>
             ),
@@ -80,11 +87,14 @@ export default function CredentialsPage() {
 
     useEffect(() => {
         loadData()
-    }, [])
+    }, [debouncedSearch])
 
     async function loadData() {
+        setLoading(true)
         try {
-            const data = await api.getCredentials()
+            const params: ListParams = {}
+            if (debouncedSearch) params.search = debouncedSearch
+            const data = await api.getCredentials(params)
             setCredentials(data)
         } catch (e) {
             console.error(e)
@@ -209,11 +219,13 @@ export default function CredentialsPage() {
                     if (!val) resetForm()
                 }}>
                     <DialogTrigger asChild>
-                        <Button><Plus className="mr-2 h-4 w-4" /> New Credential</Button>
+                        <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
+                            <Plus className="mr-2 h-4 w-4" /> New Credential
+                        </Button>
                     </DialogTrigger>
                     <DialogContent className="bg-card text-card-foreground border-gray-800">
                         <DialogHeader>
-                            <DialogTitle>{editingId ? "Edit Credential" : "Add Credential"}</DialogTitle>
+                            <DialogTitle>{editingId ? "Edit Credential" : "New Credential"}</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {/* ... (existing form) */}
@@ -252,19 +264,20 @@ export default function CredentialsPage() {
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
-                    value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-                    onChange={(event) => table.getColumn("name")?.setFilterValue(event)}
+                    value={searchValue}
+                    onChange={setSearchValue}
+                    placeholder="Search credentials..."
                 />
             </div>
 
-            <div className="rounded-md border border-gray-800 bg-card">
+            <div className="rounded-md border border-border bg-card">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="border-gray-800 hover:bg-gray-900/50">
+                            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
                                 {headerGroup.headers.map((header) => {
                                     return (
-                                        <TableHead key={header.id} className="text-gray-400">
+                                        <TableHead key={header.id}>
                                             {header.isPlaceholder
                                                 ? null
                                                 : flexRender(
@@ -280,7 +293,7 @@ export default function CredentialsPage() {
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center text-gray-400">
+                                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                                     Loading...
                                 </TableCell>
                             </TableRow>
@@ -289,7 +302,7 @@ export default function CredentialsPage() {
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
-                                    className="border-border hover:bg-muted/50 cursor-pointer"
+                                    className="border-border/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
                                     onClick={() => {
                                         const c = row.original
                                         setEditingId(c.id)
@@ -308,7 +321,7 @@ export default function CredentialsPage() {
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center text-gray-400">
+                                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                                     No results.
                                 </TableCell>
                             </TableRow>
