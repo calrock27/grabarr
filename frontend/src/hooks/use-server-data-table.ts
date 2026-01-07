@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
     ColumnDef,
     SortingState,
@@ -33,6 +33,10 @@ export function useServerDataTable<TData>({
         defaultSortBy ? [{ id: defaultSortBy, desc: defaultSortOrder === 'desc' }] : []
     )
 
+    // Use ref to avoid infinite loops when fetchFn changes on every render
+    const fetchFnRef = useRef(fetchFn)
+    fetchFnRef.current = fetchFn
+
     // Debounce search input
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -56,7 +60,7 @@ export function useServerDataTable<TData>({
     const fetchData = useCallback(async () => {
         setLoading(true)
         try {
-            const result = await fetchFn(params)
+            const result = await fetchFnRef.current(params)
             setData(result)
         } catch (error) {
             console.error("Failed to fetch data:", error)
@@ -64,7 +68,7 @@ export function useServerDataTable<TData>({
         } finally {
             setLoading(false)
         }
-    }, [fetchFn, params])
+    }, [params])
 
     useEffect(() => {
         fetchData()

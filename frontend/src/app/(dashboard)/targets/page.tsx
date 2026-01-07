@@ -11,12 +11,15 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Plus, Trash2, ChevronDown, Check, X } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { RemoteDialog } from "@/components/remotes/RemoteDialog"
 import { Badge } from "@/components/ui/badge"
 import { SearchInput } from "@/components/ui/search-input"
+import { InlineSelect } from "@/components/ui/inline-select"
 import { SortableHeader } from "@/components/ui/sortable-header"
 import { useServerDataTable } from "@/hooks/use-server-data-table"
+import { DataTable } from "@/components/common/DataTable"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
 
 // Helper to get host/endpoint display based on remote type
@@ -160,14 +163,14 @@ export default function RemotesPage() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="hover:text-red-400"
+                        className="hover:text-red-400 hover:bg-red-400/10 transition-colors"
                         onClick={() => {
                             if (confirm('Delete target?')) {
                                 api.deleteRemote(row.original.id).then(() => refresh())
                             }
                         }}
                     >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-red-400" />
                     </Button>
                 </div>
             )
@@ -214,12 +217,13 @@ export default function RemotesPage() {
     }
 
     return (
-        <div className="p-8 space-y-6 text-white h-screen">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Targets</h2>
-                    <p className="text-muted-foreground">Manage available source and destination endpoints.</p>
-                </div>
+        <div className="p-6">
+            <PageHeader
+                title="Targets"
+                description="Manage available source and destination endpoints."
+                actionLabel="New Target"
+                onAction={() => setOpen(true)}
+            >
                 <RemoteDialog
                     open={open}
                     onOpenChange={(val) => {
@@ -231,10 +235,7 @@ export default function RemotesPage() {
                     onSubmit={handleSubmit}
                     mode={editingRemote ? "edit" : "create"}
                 />
-                <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6" onClick={() => setOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> New Target
-                </Button>
-            </div>
+            </PageHeader>
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
@@ -244,117 +245,13 @@ export default function RemotesPage() {
                 />
             </div>
 
-            <div className="rounded-md border border-border bg-card">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-                                {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id}>
-                                        {header.isPlaceholder
-                                            ? null
-                                            : flexRender(
-                                                header.column.columnDef.header,
-                                                header.getContext()
-                                            )}
-                                    </TableHead>
-                                ))}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">Loading...</TableCell>
-                            </TableRow>
-                        ) : table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    className="border-border/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                                    onClick={() => handleEdit(row.original)}
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">No targets found. Create one to get started.</TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-        </div>
-    )
-}
-
-function InlineSelect({ value, options, onSave }: { value: string, options: { label: string, value: string }[], onSave: (val: string) => Promise<any> }) {
-    const [isEditing, setIsEditing] = useState(false)
-    const [currentValue, setCurrentValue] = useState(options.find(o => o.label === value)?.value || options[0]?.value || '')
-    const [isLoading, setIsLoading] = useState(false)
-
-    useEffect(() => {
-        setCurrentValue(options.find(o => o.label === value)?.value || options[0]?.value || '')
-    }, [value, options])
-
-    if (isEditing) {
-        return (
-            <div className="flex items-center gap-1 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                <div className="relative">
-                    <select
-                        value={currentValue}
-                        onChange={(e) => setCurrentValue(e.target.value)}
-                        className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary w-32"
-                        disabled={isLoading}
-                        autoFocus
-                    >
-                        {options.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1.5 h-3 w-3 text-zinc-500 pointer-events-none" />
-                </div>
-                <button
-                    onClick={async () => {
-                        setIsLoading(true)
-                        try {
-                            await onSave(currentValue)
-                            setIsEditing(false)
-                        } finally {
-                            setIsLoading(false)
-                        }
-                    }}
-                    className="p-1 hover:bg-primary/10 rounded text-primary transition-colors"
-                    disabled={isLoading}
-                >
-                    <Check className="h-4 w-4" />
-                </button>
-                <button
-                    onClick={() => {
-                        setCurrentValue(options.find(o => o.label === value)?.value || options[0]?.value || '')
-                        setIsEditing(false)
-                    }}
-                    className="p-1 hover:bg-red-500/10 rounded text-red-500 transition-colors"
-                    disabled={isLoading}
-                >
-                    <X className="h-4 w-4" />
-                </button>
-            </div>
-        )
-    }
-
-    return (
-        <div
-            onDoubleClick={() => setIsEditing(true)}
-            className="cursor-pointer hover:bg-white/5 px-2 py-1 rounded -ml-2 transition-all border border-transparent hover:border-zinc-700/50 text-sm text-muted-foreground"
-            title="Double click to edit"
-        >
-            {value || "—"}
+            <DataTable
+                table={table}
+                columns={columns}
+                loading={loading}
+                emptyMessage="No targets found. Create one to get started."
+                onRowClick={handleEdit}
+            />
         </div>
     )
 }

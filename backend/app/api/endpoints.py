@@ -12,6 +12,7 @@ from ..crypto import encrypt_credential_data, decrypt_credential_data, get_key_f
 from ..list_params import apply_list_params
 
 from ..scheduler import scheduler, get_job_next_run, add_scheduler_job, remove_scheduler_job
+from ..auth import get_current_user
 
 async def verify_api_key(x_api_key: Optional[str] = Header(None)):
     # If no key provided, maybe allow internal traffic? 
@@ -28,7 +29,12 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)):
     # The requirement is "API Control... secure external calls".
     return True
 
-router = APIRouter()
+# SECURITY: All routes require authentication by default
+# Public routes are explicitly excluded using separate routers
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+# Public router for unauthenticated routes (auth, embed widgets public view)
+public_router = APIRouter()
 
 # Pydantic Models
 class CredentialCreate(BaseModel):
@@ -169,10 +175,29 @@ async def list_remotes(
     sort_order: str = "asc",
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(Remote)
-    query = apply_list_params(query, Remote, search, sort_by, sort_order, ["name", "type"])
+    from sqlalchemy import or_, cast, String
+    from sqlalchemy.orm import joinedload
+    
+    query = select(Remote).options(joinedload(Remote.credential))
+    
+    # Comprehensive search across all visible columns
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Remote.name.ilike(search_term),
+                Remote.type.ilike(search_term),
+                # Search host, endpoint, provider, bucket from config JSON
+                cast(Remote.config, String).ilike(search_term),
+                # Search credential name via relationship
+                Remote.credential.has(Credential.name.ilike(search_term))
+            )
+        )
+    
+    # Apply sorting only
+    query = apply_list_params(query, Remote, None, sort_by, sort_order, [])
     result = await db.execute(query)
-    return result.scalars().all()
+    return result.scalars().unique().all()
 
 @router.post("/remotes/test")
 async def test_remote(remote: RemoteCreate, db: AsyncSession = Depends(get_db)):
@@ -321,8 +346,24 @@ async def list_actions(
     sort_order: str = "asc",
     db: AsyncSession = Depends(get_db)
 ):
+    from sqlalchemy import or_, cast, String
+    
     query = select(Action)
-    query = apply_list_params(query, Action, search, sort_by, sort_order, ["name", "type"])
+    
+    # Comprehensive search including config JSON for details
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Action.name.ilike(search_term),
+                Action.type.ilike(search_term),
+                # Search details from config JSON (command, url, webhook_url, etc.)
+                cast(Action.config, String).ilike(search_term)
+            )
+        )
+    
+    # Apply sorting only
+    query = apply_list_params(query, Action, None, sort_by, sort_order, [])
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -488,17 +529,58 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy.orm import selectinload
-    query = select(Job).options(selectinload(Job.actions).selectinload(JobAction.action))
-    query = apply_list_params(query, Job, search, sort_by, sort_order, ["name", "operation"])
+    from sqlalchemy import or_, cast, String, func
+    from sqlalchemy.orm import aliased
+    
+    # Create subquery to get latest history entry per job
+    hist_subq = (
+        select(JobHistory.job_id, func.max(JobHistory.id).label("max_id"))
+        .group_by(JobHistory.job_id)
+        .subquery()
+    )
+    LatestHistory = aliased(JobHistory)
+    
+    # Main query with optional history join for status search
+    query = (
+        select(Job)
+        .options(selectinload(Job.actions).selectinload(JobAction.action))
+        .outerjoin(hist_subq, Job.id == hist_subq.c.job_id)
+        .outerjoin(LatestHistory, LatestHistory.id == hist_subq.c.max_id)
+    )
+    
+    # Custom search across all visible columns including derived status
+    if search:
+        search_term = f"%{search}%"
+        search_lower = search.lower()
+        
+        # Build search conditions
+        conditions = [
+            Job.name.ilike(search_term),
+            Job.operation.ilike(search_term),
+            Job.schedule.ilike(search_term),
+            Job.transfer_method.ilike(search_term),
+            cast(Job.last_run, String).ilike(search_term),
+            cast(Job.next_run, String).ilike(search_term),
+            # Search actual status from history
+            LatestHistory.status.ilike(search_term),
+        ]
+        
+        # Special case: if searching for "idle", include jobs with NO history
+        if "idle" in search_lower:
+            conditions.append(hist_subq.c.max_id == None)
+        
+        query = query.where(or_(*conditions))
+    
+    # Apply sorting only
+    query = apply_list_params(query, Job, None, sort_by, sort_order, [])
     result = await db.execute(query)
-    jobs = result.scalars().all()
+    jobs = result.scalars().unique().all()
     
     if not jobs:
         return []
 
     # 2. Fetch latest history entry for each job in one query
     # We use a subquery to get the max ID for each job_id, then join back
-    from sqlalchemy import func
     subq = select(JobHistory.job_id, func.max(JobHistory.id).label("max_id")).group_by(JobHistory.job_id).subquery()
     hist_stmt = select(JobHistory).join(subq, JobHistory.id == subq.c.max_id)
     hist_res = await db.execute(hist_stmt)
@@ -889,8 +971,24 @@ async def list_schedules(
     db: AsyncSession = Depends(get_db)
 ):
     from ..models import ScheduleTemplate
+    from sqlalchemy import or_, cast, String
+    
     query = select(ScheduleTemplate)
-    query = apply_list_params(query, ScheduleTemplate, search, sort_by, sort_order, ["name"])
+    
+    # Comprehensive search including config JSON for cron expression
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                ScheduleTemplate.name.ilike(search_term),
+                ScheduleTemplate.schedule_type.ilike(search_term),
+                # Search cron expression from config JSON
+                cast(ScheduleTemplate.config, String).ilike(search_term)
+            )
+        )
+    
+    # Apply sorting only
+    query = apply_list_params(query, ScheduleTemplate, None, sort_by, sort_order, [])
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -1006,18 +1104,22 @@ async def list_history(
 ):
     from ..models import JobHistory, Job
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import or_
+    from sqlalchemy import or_, cast, String
     
     stmt = select(JobHistory).options(joinedload(JobHistory.job))
     
-    # Apply search filter on status and job name via join
+    # Apply comprehensive search filter across all visible columns
     if search:
         search_term = f"%{search}%"
-        # Filter by status or by job name through the relationship
         stmt = stmt.where(
             or_(
                 JobHistory.status.ilike(search_term),
-                JobHistory.job.has(Job.name.ilike(search_term))
+                JobHistory.job.has(Job.name.ilike(search_term)),
+                cast(JobHistory.started_at, String).ilike(search_term),
+                cast(JobHistory.completed_at, String).ilike(search_term),
+                cast(JobHistory.avg_speed, String).ilike(search_term),
+                # Search trigger from job_snapshot JSON (execution_type field)
+                cast(JobHistory.job_snapshot, String).ilike(search_term)
             )
         )
     
@@ -1175,13 +1277,20 @@ async def create_backup(payload: dict):
             cmd = ["tar", "-czf", "-", "-C", tmp_dir] + files_to_archive
             
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+            # SECURITY: Use -pass stdin to avoid password exposure in process list
             p2 = subprocess.Popen(
-                ["openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-k", password],
-                stdin=p1.stdout,
+                ["openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-pass", "stdin"],
+                stdin=subprocess.PIPE,
                 stdout=f_out
             )
+            # Write password to stdin, then pipe tar output
+            p2.stdin.write(password.encode() + b"\n")
+            # Now pipe the tar output through
+            for chunk in iter(lambda: p1.stdout.read(8192), b""):
+                p2.stdin.write(chunk)
             p1.stdout.close()
-            p2.communicate()
+            p2.stdin.close()
+            p2.wait()
 
         return FileResponse(backup_path, filename="grabarr_backup.enc", background=None)
     except Exception as e:
@@ -1197,22 +1306,31 @@ async def restore_backup(password: str = Form(...), file: UploadFile = File(...)
         with open(enc_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # Decrypt and Untar
+        # Decrypt and Untar - SECURITY: Use -pass stdin to avoid password exposure
+        # First read the encrypted file
+        with open(enc_path, 'rb') as enc_file:
+            enc_data = enc_file.read()
+        
         p1 = subprocess.Popen(
-            ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-k", password, "-in", enc_path],
+            ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-pass", "stdin"],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
+        # Write password followed by newline, then the encrypted data
+        decrypted_data, p1_err = p1.communicate(input=password.encode() + b"\n" + enc_data)
+        
+        if p1.returncode != 0:
+            raise HTTPException(status_code=400, detail="Decryption failed - wrong password or corrupt file")
+        
         p2 = subprocess.Popen(
             ["tar", "-xzf", "-", "-C", tmp_dir],
-            stdin=p1.stdout,
+            stdin=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
-        p1.stdout.close()
-        out, err = p2.communicate()
-
+        out, err = p2.communicate(input=decrypted_data)
         if p2.returncode != 0:
-            raise HTTPException(status_code=400, detail="Decryption failed or invalid archive")
+            raise HTTPException(status_code=400, detail="Invalid archive format")
 
         # 1. Restore DB
         restored_db = os.path.join(tmp_dir, "grabarr.db")
@@ -1331,7 +1449,7 @@ class AuthResponse(BaseModel):
     message: str
     username: Optional[str] = None
 
-@router.get("/auth/status")
+@public_router.get("/auth/status")
 async def auth_status():
     """Check if authentication is set up and required."""
     has_admin = await admin_exists()
@@ -1340,7 +1458,7 @@ async def auth_status():
         "setup_complete": has_admin
     }
 
-@router.post("/auth/setup")
+@public_router.post("/auth/setup")
 async def setup_admin(setup: SetupRequest, db: AsyncSession = Depends(get_db)):
     """Initial admin setup - only works if no admin exists."""
     # Check if admin already exists
@@ -1364,7 +1482,7 @@ async def setup_admin(setup: SetupRequest, db: AsyncSession = Depends(get_db)):
     
     return {"success": True, "message": "Admin user created successfully"}
 
-@router.post("/auth/login")
+@public_router.post("/auth/login")
 async def login(request: Request, login_req: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate and get session token."""
     # Get admin user
@@ -1394,7 +1512,7 @@ async def login(request: Request, login_req: LoginRequest, response: Response, d
     
     return {"success": True, "message": "Login successful", "username": user.username}
 
-@router.post("/auth/logout")
+@public_router.post("/auth/logout")
 async def logout(response: Response):
     """Log out and clear session."""
     response.delete_cookie(key="grabarr_session")
@@ -1454,21 +1572,38 @@ async def list_widgets(
 ):
     """List all embed widgets."""
     from sqlalchemy.orm import joinedload
+    from sqlalchemy import or_, cast, String
     query = select(EmbedWidget).options(joinedload(EmbedWidget.job))
-    query = apply_list_params(query, EmbedWidget, search, sort_by, sort_order, ["name"])
+    
+    # Custom search that includes job name and dimensions
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                EmbedWidget.name.ilike(search_term),
+                EmbedWidget.job.has(Job.name.ilike(search_term)),
+                cast(EmbedWidget.width, String).ilike(search_term),
+                cast(EmbedWidget.height, String).ilike(search_term)
+            )
+        )
+    # Apply sorting only (search already handled)
+    query = apply_list_params(query, EmbedWidget, None, sort_by, sort_order, [])
     result = await db.execute(query)
     return result.scalars().unique().all()
 
 @router.get("/widgets/{widget_id}", response_model=EmbedWidgetRead)
 async def get_widget(widget_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific widget by ID."""
-    result = await db.execute(select(EmbedWidget).where(EmbedWidget.id == widget_id))
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(EmbedWidget).options(joinedload(EmbedWidget.job)).where(EmbedWidget.id == widget_id)
+    )
     widget = result.scalar_one_or_none()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
     return widget
 
-@router.get("/widgets/by-key/{embed_key}")
+@public_router.get("/widgets/by-key/{embed_key}")
 async def get_widget_by_key(embed_key: str, db: AsyncSession = Depends(get_db)):
     """Get widget by its embed key (used by embed pages)."""
     result = await db.execute(select(EmbedWidget).where(EmbedWidget.embed_key == embed_key))
@@ -1539,7 +1674,13 @@ async def create_widget(widget: EmbedWidgetCreate, db: AsyncSession = Depends(ge
     await log_activity(db, "create", "widget", None, {"job_id": widget.job_id, "name": widget.name})
     await db.commit()
     await db.refresh(db_widget)
-    return db_widget
+    
+    # Reload with job relationship for response
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(EmbedWidget).options(joinedload(EmbedWidget.job)).where(EmbedWidget.id == db_widget.id)
+    )
+    return result.scalar_one()
 
 @router.put("/widgets/{widget_id}", response_model=EmbedWidgetRead)
 async def update_widget(widget_id: int, widget: EmbedWidgetUpdate, db: AsyncSession = Depends(get_db)):
@@ -1556,7 +1697,13 @@ async def update_widget(widget_id: int, widget: EmbedWidgetUpdate, db: AsyncSess
     await log_activity(db, "update", "widget", widget_id, update_data)
     await db.commit()
     await db.refresh(db_widget)
-    return db_widget
+    
+    # Reload with job relationship for response
+    from sqlalchemy.orm import joinedload
+    result = await db.execute(
+        select(EmbedWidget).options(joinedload(EmbedWidget.job)).where(EmbedWidget.id == widget_id)
+    )
+    return result.scalar_one()
 
 @router.delete("/widgets/{widget_id}")
 async def delete_widget(widget_id: int, db: AsyncSession = Depends(get_db)):
@@ -1591,3 +1738,57 @@ async def list_job_widgets(job_id: int, db: AsyncSession = Depends(get_db)):
     """List all widgets for a specific job."""
     result = await db.execute(select(EmbedWidget).where(EmbedWidget.job_id == job_id))
     return result.scalars().all()
+
+
+# =====================================
+# CORS Settings (Security Section)
+# =====================================
+
+class CORSSettingsRead(BaseModel):
+    allowed_origins: List[str] = []
+
+class CORSSettingsUpdate(BaseModel):
+    allowed_origins: List[str]
+
+@router.get("/security/cors", response_model=CORSSettingsRead)
+async def get_cors_settings(db: AsyncSession = Depends(get_db)):
+    """Get current CORS allowed origins."""
+    result = await db.execute(
+        select(SystemSettings).where(SystemSettings.key == "cors_allowed_origins")
+    )
+    setting = result.scalars().first()
+    
+    if setting and setting.value:
+        origins = setting.value if isinstance(setting.value, list) else []
+    else:
+        # Return default origins
+        origins = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+    
+    return CORSSettingsRead(allowed_origins=origins)
+
+@router.put("/security/cors", response_model=CORSSettingsRead)
+async def update_cors_settings(settings: CORSSettingsUpdate, db: AsyncSession = Depends(get_db)):
+    """Update CORS allowed origins. Changes take effect on next server restart."""
+    # Validate origins - basic URL format check
+    validated_origins = []
+    for origin in settings.allowed_origins:
+        origin = origin.strip()
+        if origin and (origin.startswith("http://") or origin.startswith("https://")):
+            # Remove trailing slash if present
+            validated_origins.append(origin.rstrip("/"))
+    
+    result = await db.execute(
+        select(SystemSettings).where(SystemSettings.key == "cors_allowed_origins")
+    )
+    setting = result.scalars().first()
+    
+    if setting:
+        setting.value = validated_origins
+    else:
+        db.add(SystemSettings(key="cors_allowed_origins", value=validated_origins))
+    
+    await log_activity(db, "update", "cors_settings", None, {"origins": validated_origins})
+    await db.commit()
+    
+    return CORSSettingsRead(allowed_origins=validated_origins)
+

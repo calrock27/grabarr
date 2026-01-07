@@ -1,17 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { api, type Credential, type ListParams } from "@/lib/api"
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
-import { Plus, Trash2 } from "lucide-react"
+import { api, type Credential } from "@/lib/api"
+import { Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -25,24 +17,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { SearchInput } from "@/components/ui/search-input"
 import { SortableHeader } from "@/components/ui/sortable-header"
-import { useDataTable } from "@/hooks/use-data-table"
-import { ColumnDef, flexRender } from "@tanstack/react-table"
+import { useServerDataTable } from "@/hooks/use-server-data-table"
+import { ColumnDef } from "@tanstack/react-table"
+import { DataTable } from "@/components/common/DataTable"
+import { PageHeader } from "@/components/layout/PageHeader"
 
 export default function CredentialsPage() {
-    const [credentials, setCredentials] = useState<Credential[]>([])
-    const [loading, setLoading] = useState(true)
     const [open, setOpen] = useState(false)
     const [editingId, setEditingId] = useState<number | null>(null)
-    const [searchValue, setSearchValue] = useState("")
-    const [debouncedSearch, setDebouncedSearch] = useState("")
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedSearch(searchValue), 300)
-        return () => clearTimeout(timer)
-    }, [searchValue])
+    // Form state
+    const [name, setName] = useState("")
+    const [type, setType] = useState("ssh")
+    const [formData, setFormData] = useState<Record<string, string>>({})
 
-    // Columns
+    // Columns definition
     const columns: ColumnDef<Credential>[] = [
         {
             accessorKey: "name",
@@ -63,11 +52,15 @@ export default function CredentialsPage() {
                 const c = row.original
                 return (
                     <div className="text-right">
-                        <Button variant="ghost" size="icon" className="hover:text-red-400" onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm('Delete credential?')) api.deleteCredential(c.id).then(loadData)
-                        }}>
-                            <Trash2 className="h-4 w-4" />
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (confirm('Delete credential?')) api.deleteCredential(c.id).then(refresh)
+                            }}>
+                            <Trash2 className="h-4 w-4 text-red-400" />
                         </Button>
                     </div>
                 )
@@ -75,33 +68,11 @@ export default function CredentialsPage() {
         },
     ]
 
-    const { table } = useDataTable({
-        data: credentials,
+    const { table, loading, searchValue, setSearchValue, refresh } = useServerDataTable({
+        fetchFn: (params) => api.getCredentials(params),
         columns,
+        defaultSortBy: "name",
     })
-
-    // Form
-    const [name, setName] = useState("")
-    const [type, setType] = useState("ssh")
-    const [formData, setFormData] = useState<Record<string, string>>({})
-
-    useEffect(() => {
-        loadData()
-    }, [debouncedSearch])
-
-    async function loadData() {
-        setLoading(true)
-        try {
-            const params: ListParams = {}
-            if (debouncedSearch) params.search = debouncedSearch
-            const data = await api.getCredentials(params)
-            setCredentials(data)
-        } catch (e) {
-            console.error(e)
-        } finally {
-            setLoading(false)
-        }
-    }
 
     function resetForm() {
         setName("")
@@ -125,7 +96,7 @@ export default function CredentialsPage() {
                 await api.createCredential(payload)
             }
             setOpen(false)
-            loadData()
+            refresh()
             resetForm()
         } catch (e) {
             alert("Failed to save credential.")
@@ -207,20 +178,27 @@ export default function CredentialsPage() {
         }
     }
 
+    const handleRowClick = (credential: Credential) => {
+        setEditingId(credential.id)
+        setName(credential.name)
+        setType(credential.type)
+        setFormData(credential.data || {})
+        setOpen(true)
+    }
+
     return (
-        <div className="p-8 space-y-6 text-white">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Credentials</h2>
-                    <p className="text-muted-foreground">Securely manage authentication keys and tokens.</p>
-                </div>
+        <div className="p-6">
+            <PageHeader
+                title="Credentials"
+                description="Securely manage authentication keys and tokens."
+            >
                 <Dialog open={open} onOpenChange={(val) => {
                     setOpen(val)
                     if (!val) resetForm()
                 }}>
                     <DialogTrigger asChild>
                         <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
-                            <Plus className="mr-2 h-4 w-4" /> New Credential
+                            New Credential
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="bg-card text-card-foreground border-gray-800">
@@ -228,7 +206,6 @@ export default function CredentialsPage() {
                             <DialogTitle>{editingId ? "Edit Credential" : "New Credential"}</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* ... (existing form) */}
                             <div className="space-y-2">
                                 <Label>Name</Label>
                                 <Input value={name} onChange={e => setName(e.target.value)} required className="bg-muted/50 border-input" />
@@ -236,13 +213,10 @@ export default function CredentialsPage() {
                             <div className="space-y-2">
                                 <Label>Type</Label>
                                 <Select value={type} onValueChange={(v) => {
-                                    // Only reset data if changing type completely, mainly if creating? 
-                                    // If editing, changing type might clear data.
                                     setType(v);
                                     if (!editingId) setFormData({});
                                 }}>
                                     <SelectTrigger className="bg-muted/50 border-input">
-
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -260,7 +234,7 @@ export default function CredentialsPage() {
                         </form>
                     </DialogContent>
                 </Dialog>
-            </div>
+            </PageHeader>
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
@@ -270,65 +244,13 @@ export default function CredentialsPage() {
                 />
             </div>
 
-            <div className="rounded-md border border-border bg-card">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-                                {headerGroup.headers.map((header) => {
-                                    return (
-                                        <TableHead key={header.id}>
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                        </TableHead>
-                                    )
-                                })}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                                    Loading...
-                                </TableCell>
-                            </TableRow>
-                        ) : table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    className="border-border/50 hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                                    onClick={() => {
-                                        const c = row.original
-                                        setEditingId(c.id)
-                                        setName(c.name)
-                                        setType(c.type)
-                                        setFormData(c.data || {})
-                                        setOpen(true)
-                                    }}
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                                    No results.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+            <DataTable
+                table={table}
+                columns={columns}
+                loading={loading}
+                emptyMessage="No results."
+                onRowClick={handleRowClick}
+            />
         </div>
     )
 }

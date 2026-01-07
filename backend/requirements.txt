@@ -1,11 +1,29 @@
-fastapi
-uvicorn
-sqlalchemy
-aiosqlite
-pydantic
-httpx
-apscheduler
-python-multipart
-cryptography
-pyjwt
-docker
+# Core framework
+fastapi==0.115.6
+uvicorn==0.34.0
+starlette>=0.40.0  # CVE-2024-47874 fix
+
+# Database
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# Data validation
+pydantic==2.10.4
+
+# HTTP client
+httpx==0.28.1
+
+# Scheduling
+apscheduler==3.11.0
+
+# File uploads
+python-multipart==0.0.20
+
+# Security
+cryptography==44.0.0
+pyjwt==2.10.1
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+
+# Docker integration
+docker==7.1.0

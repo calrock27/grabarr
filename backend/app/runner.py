@@ -140,24 +140,9 @@ class JobRunner:
                 resp.raise_for_status()
                 
         elif action.type == 'command':
-            cmd_str = substitute(config.get('command'))
-            cwd = substitute(config.get('cwd')) or None
-            timeout = int(config.get('timeout', 30))
-            
-            proc = await asyncio.create_subprocess_shell(
-                cmd_str,
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-                if proc.returncode != 0:
-                    raise Exception(f"Command failed with code {proc.returncode}: {stderr.decode()}")
-                logger.debug(f"Action command output: {stdout.decode()}")
-            except asyncio.TimeoutError:
-                proc.kill()
-                raise Exception("Command timed out")
+            # SECURITY: Command execution has been disabled due to command injection risks.
+            # Use webhooks, Docker actions, or rclone actions instead.
+            raise Exception("Command actions are disabled for security reasons. Use webhook, docker, or rclone actions instead.")
 
         elif action.type == 'delay':
             seconds = int(config.get('seconds', 60))

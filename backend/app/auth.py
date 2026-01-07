@@ -4,6 +4,8 @@ Implements JWT with device fingerprinting for session hijacking protection.
 """
 import hashlib
 import secrets
+import os
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -16,10 +18,55 @@ from sqlalchemy import select
 from .db import AsyncSessionLocal
 from .models import AdminUser, SystemSettings
 
+logger = logging.getLogger(__name__)
+
 # JWT Configuration
-JWT_SECRET_KEY = secrets.token_urlsafe(32)  # Generated on startup
+JWT_SECRET_KEY_PATH = os.environ.get("GRABARR_JWT_SECRET_PATH", "/config/.jwt_secret")
+# Fallback for development (relative to backend dir)
+if not os.path.exists(os.path.dirname(JWT_SECRET_KEY_PATH)) and JWT_SECRET_KEY_PATH == "/config/.jwt_secret":
+    JWT_SECRET_KEY_PATH = os.path.join(os.path.dirname(__file__), "..", ".jwt_secret")
+
 JWT_ALGORITHM = "HS256"
 DEFAULT_SESSION_DAYS = 7
+
+# SECURITY: Trusted proxy configuration
+# Only trust X-Forwarded-For from these IPs. Empty list disables the header entirely.
+# Set via environment variable as comma-separated IPs, e.g., "127.0.0.1,10.0.0.1"
+TRUSTED_PROXIES = [ip.strip() for ip in os.environ.get("GRABARR_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if ip.strip()]
+
+
+def get_jwt_secret() -> str:
+    """Get or create persistent JWT secret key."""
+    key_path = os.path.abspath(JWT_SECRET_KEY_PATH)
+    
+    if os.path.exists(key_path):
+        try:
+            with open(key_path, "r") as f:
+                return f.read().strip()
+        except Exception as e:
+            logger.error(f"Failed to read JWT secret from {key_path}: {e}")
+    
+    # Generate new secret
+    logger.info(f"Generating new JWT secret at {key_path}")
+    secret = secrets.token_urlsafe(32)
+    
+    # Ensure directory exists
+    key_dir = os.path.dirname(key_path)
+    if key_dir:
+        os.makedirs(key_dir, exist_ok=True)
+    
+    try:
+        with open(key_path, "w") as f:
+            f.write(secret)
+        os.chmod(key_path, 0o600)
+    except Exception as e:
+        logger.warning(f"Could not persist JWT secret: {e}")
+    
+    return secret
+
+
+# Initialize JWT secret (now persisted)
+JWT_SECRET_KEY = get_jwt_secret()
 
 security = HTTPBearer(auto_error=False)
 
@@ -38,15 +85,29 @@ def create_fingerprint(request: Request) -> str:
     """
     Create a device fingerprint from request headers.
     Uses User-Agent + first 2 IP octets for some flexibility with dynamic IPs.
+    SECURITY: Only trusts X-Forwarded-For from configured trusted proxies.
     """
     user_agent = request.headers.get("user-agent", "unknown")
     
-    # Get client IP (handle proxies)
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
+    # Get client IP - only trust X-Forwarded-For from trusted proxies
+    direct_ip = request.client.host if request.client else "0.0.0.0"
+    
+    # SECURITY: Only use X-Forwarded-For if request comes from trusted proxy
+    if TRUSTED_PROXIES and direct_ip in TRUSTED_PROXIES:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            # Validate format and take the leftmost (client) IP
+            client_ip = forwarded.split(",")[0].strip()
+            # Basic validation: should look like an IP
+            if client_ip and (client_ip.count(".") == 3 or ":" in client_ip):
+                pass  # Valid format, use it
+            else:
+                client_ip = direct_ip  # Invalid format, use direct IP
+        else:
+            client_ip = direct_ip
     else:
-        client_ip = request.client.host if request.client else "0.0.0.0"
+        # Not from trusted proxy, use direct connection IP
+        client_ip = direct_ip
     
     # Use first 2 octets only (allows for same ISP dynamic IP changes)
     ip_parts = client_ip.split(".")

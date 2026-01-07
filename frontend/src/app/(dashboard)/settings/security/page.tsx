@@ -5,7 +5,7 @@ import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     Table,
     TableBody,
@@ -14,7 +14,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Plus, Trash2, Key, Copy } from "lucide-react"
+import { Plus, Trash2, Copy, Globe, AlertCircle } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -24,6 +24,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog"
+import { toast } from "sonner"
 
 // Define helper type locally since it's just for display
 interface APIKey {
@@ -41,8 +42,15 @@ export default function SecurityPage() {
 
     const [newKey, setNewKey] = useState<string | null>(null)
 
+    // CORS Settings State
+    const [corsOrigins, setCorsOrigins] = useState<string[]>([])
+    const [corsLoading, setCorsLoading] = useState(true)
+    const [newOrigin, setNewOrigin] = useState("")
+    const [corsSaving, setCorsSaving] = useState(false)
+
     useEffect(() => {
         loadData()
+        loadCORSSettings()
     }, [])
 
     async function loadData() {
@@ -53,6 +61,17 @@ export default function SecurityPage() {
             console.error(err)
         } finally {
             setLoading(false)
+        }
+    }
+
+    async function loadCORSSettings() {
+        try {
+            const data = await api.getCORSSettings()
+            setCorsOrigins(data.allowed_origins || [])
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setCorsLoading(false)
         }
     }
 
@@ -74,12 +93,50 @@ export default function SecurityPage() {
         loadData()
     }
 
+    async function handleAddOrigin() {
+        const origin = newOrigin.trim()
+        if (!origin) return
+
+        // Basic validation
+        if (!origin.startsWith("http://") && !origin.startsWith("https://")) {
+            toast.error("Origin must start with http:// or https://")
+            return
+        }
+
+        if (corsOrigins.includes(origin)) {
+            toast.error("Origin already exists")
+            return
+        }
+
+        const updatedOrigins = [...corsOrigins, origin]
+        await saveCORSSettings(updatedOrigins)
+        setNewOrigin("")
+    }
+
+    async function handleRemoveOrigin(origin: string) {
+        const updatedOrigins = corsOrigins.filter(o => o !== origin)
+        await saveCORSSettings(updatedOrigins)
+    }
+
+    async function saveCORSSettings(origins: string[]) {
+        setCorsSaving(true)
+        try {
+            const result = await api.updateCORSSettings(origins)
+            setCorsOrigins(result.allowed_origins)
+            toast.success("CORS settings updated. Restart grabarr for changes to take effect.")
+        } catch (err) {
+            toast.error("Failed to update CORS settings")
+        } finally {
+            setCorsSaving(false)
+        }
+    }
+
     return (
         <div className="p-8 space-y-6 text-white min-h-screen">
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Security</h2>
-                    <p className="text-muted-foreground">Manage API Keys for external integration.</p>
+                    <p className="text-muted-foreground">Manage API keys and security settings.</p>
                 </div>
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                     <DialogTrigger asChild>
@@ -125,7 +182,12 @@ export default function SecurityPage() {
                 </Card>
             )}
 
+            {/* API Keys Table */}
             <Card className="bg-card border-border">
+                <CardHeader className="pb-4">
+                    <CardTitle className="text-lg">API Keys</CardTitle>
+                    <CardDescription>Keys for external integrations to trigger jobs.</CardDescription>
+                </CardHeader>
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
@@ -172,6 +234,63 @@ export default function SecurityPage() {
                             )}
                         </TableBody>
                     </Table>
+                </CardContent>
+            </Card>
+
+            {/* CORS Settings */}
+            <Card className="bg-card border-border">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center gap-2">
+                        <Globe className="h-5 w-5 text-primary" />
+                        <CardTitle className="text-lg">CORS Allowed Origins</CardTitle>
+                    </div>
+                    <CardDescription>
+                        Configure which domains can access the API. Changes require a grabarr restart.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                        <p className="text-sm text-amber-200">
+                            Changes to CORS settings require restarting grabarr to take effect.
+                        </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Input
+                            value={newOrigin}
+                            onChange={e => setNewOrigin(e.target.value)}
+                            placeholder="https://example.com"
+                            className="bg-muted/50 border-input"
+                            onKeyDown={e => e.key === 'Enter' && handleAddOrigin()}
+                        />
+                        <Button onClick={handleAddOrigin} disabled={corsSaving || !newOrigin.trim()}>
+                            <Plus className="h-4 w-4 mr-2" /> Add
+                        </Button>
+                    </div>
+
+                    {corsLoading ? (
+                        <p className="text-muted-foreground text-sm">Loading...</p>
+                    ) : corsOrigins.length === 0 ? (
+                        <p className="text-muted-foreground text-sm">No allowed origins configured. Add origins to enable cross-origin requests.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {corsOrigins.map((origin) => (
+                                <div key={origin} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border">
+                                    <code className="text-sm font-mono">{origin}</code>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="hover:text-red-400 h-8 w-8"
+                                        onClick={() => handleRemoveOrigin(origin)}
+                                        disabled={corsSaving}
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

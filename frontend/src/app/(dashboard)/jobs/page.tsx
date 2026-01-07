@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { api, type Job, type Schedule, type ListParams } from "@/lib/api"
 import { toast } from "sonner"
 import { logger } from "@/lib/logger"
-import { Plus, Play, Trash2, Square, Power, PowerOff, Check, X, ChevronDown } from "lucide-react"
+import { Plus, Play, Trash2, Square, Power, PowerOff } from "lucide-react"
 import {
     Table,
     TableBody,
@@ -16,8 +16,10 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { SearchInput } from "@/components/ui/search-input"
+import { InlineSelect } from "@/components/ui/inline-select"
 import { SortableHeader } from "@/components/ui/sortable-header"
 import { useDataTable } from "@/hooks/use-data-table"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
 import { useRouter } from "next/navigation"
 
@@ -300,7 +302,7 @@ export default function JobsPage() {
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 hover:bg-white/10 active:scale-90 transition-all"
+                            className="hover:text-primary hover:bg-primary/10 transition-colors"
                             title="Run Job"
                             onClick={async (e) => {
                                 e.stopPropagation()
@@ -318,12 +320,12 @@ export default function JobsPage() {
                                 }
                             }}
                         >
-                            <Play className="h-3.5 w-3.5 text-primary" />
+                            <Play className="h-4 w-4 text-primary" />
                         </Button>
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 hover:bg-white/10 active:scale-90 transition-all"
+                            className="hover:text-orange-400 hover:bg-orange-400/10 transition-colors"
                             title="Stop Job"
                             onClick={async (e) => {
                                 e.stopPropagation()
@@ -331,17 +333,17 @@ export default function JobsPage() {
                                 toast.success("Stop requested")
                             }}
                         >
-                            <Square className="h-3.5 w-3.5 text-orange-400" />
+                            <Square className="h-4 w-4 text-orange-400" />
                         </Button>
 
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 hover:bg-white/10 active:scale-90 transition-all"
+                            className="hover:text-red-400 hover:bg-red-400/10 transition-colors"
                             title="Delete Job"
                             onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}
                         >
-                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                            <Trash2 className="h-4 w-4 text-red-400" />
                         </Button>
                     </div>
                 )
@@ -355,18 +357,13 @@ export default function JobsPage() {
     })
 
     return (
-        <div className="p-6 text-white min-h-screen">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight text-white">Jobs</h2>
-                    <p className="text-zinc-400 text-sm mt-1">Orchestrate and monitor your file transfer tasks.</p>
-                </div>
-                <Link href="/jobs/new">
-                    <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
-                        <Plus className="mr-2 h-4 w-4" /> New Job
-                    </Button>
-                </Link>
-            </div>
+        <div className="p-6">
+            <PageHeader
+                title="Jobs"
+                description="Orchestrate and monitor your file transfer tasks."
+                actionLabel="New Job"
+                actionHref="/jobs/new"
+            />
 
 
 
@@ -425,72 +422,6 @@ export default function JobsPage() {
                     </TableBody>
                 </Table>
             </div>
-        </div>
-    )
-}
-
-function InlineSelect({ value, options, onSave }: { value: string, options: { label: string, value: string }[], onSave: (val: string) => Promise<any> }) {
-    const [isEditing, setIsEditing] = useState(false)
-    const [currentValue, setCurrentValue] = useState(value)
-    const [isLoading, setIsLoading] = useState(false)
-
-    useEffect(() => {
-        setCurrentValue(value)
-    }, [value])
-
-    if (isEditing) {
-        return (
-            <div className="flex items-center gap-1 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                <div className="relative">
-                    <select
-                        value={currentValue}
-                        onChange={(e) => setCurrentValue(e.target.value)}
-                        className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary w-32"
-                        disabled={isLoading}
-                        autoFocus
-                    >
-                        {options.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1.5 h-3 w-3 text-zinc-500 pointer-events-none" />
-                </div>
-                <button
-                    onClick={async () => {
-                        setIsLoading(true)
-                        try {
-                            await onSave(currentValue)
-                            setIsEditing(false)
-                        } finally {
-                            setIsLoading(false)
-                        }
-                    }}
-                    className="p-1 hover:bg-primary/10 rounded text-primary transition-colors"
-                    disabled={isLoading}
-                >
-                    <Check className="h-4 w-4" />
-                </button>
-                <button
-                    onClick={() => {
-                        setCurrentValue(value)
-                        setIsEditing(false)
-                    }}
-                    className="p-1 hover:bg-red-500/10 rounded text-red-500 transition-colors"
-                    disabled={isLoading}
-                >
-                    <X className="h-4 w-4" />
-                </button>
-            </div>
-        )
-    }
-
-    return (
-        <div
-            onDoubleClick={() => setIsEditing(true)}
-            className="cursor-pointer hover:bg-white/5 px-2 py-1 rounded -ml-2 transition-all border border-transparent hover:border-zinc-700/50 capitalize text-sm text-muted-foreground"
-            title="Double click to edit"
-        >
-            {value || "—"}
         </div>
     )
 }

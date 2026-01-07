@@ -216,6 +216,11 @@ export const api = {
     createAPIKey: (name: string) => fetchAPI("/security/keys", { method: "POST", body: JSON.stringify({ name }) }),
     deleteAPIKey: (id: number) => fetchAPI(`/security/keys/${id}`, { method: "DELETE" }),
 
+    // CORS Settings
+    getCORSSettings: (): Promise<{ allowed_origins: string[] }> => fetchAPI("/security/cors"),
+    updateCORSSettings: (allowed_origins: string[]): Promise<{ allowed_origins: string[] }> =>
+        fetchAPI("/security/cors", { method: "PUT", body: JSON.stringify({ allowed_origins }) }),
+
     getActions: (params?: ListParams) => fetchAPI(`/actions${buildQueryString(params)}`),
     createAction: (data: Omit<Action, "id">) => fetchAPI("/actions", { method: "POST", body: JSON.stringify(data) }),
     updateAction: (id: number, data: Omit<Action, "id">) => fetchAPI(`/actions/${id}`, { method: "PUT", body: JSON.stringify(data) }),

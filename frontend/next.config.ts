@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
       fallback: [
         // Base paths - REQUIRE trailing slash
         { source: "/api/jobs", destination: "http://127.0.0.1:8001/api/jobs/" },
-        { source: "/api/remotes", destination: "http://127.0.0.1:8001/api/remotes/" },
+        { source: "/api/remotes", destination: "http://127.0.0.1:8001/api/remotes" },
         { source: "/api/credentials", destination: "http://127.0.0.1:8001/api/credentials" },
         { source: "/api/schedules", destination: "http://127.0.0.1:8001/api/schedules/" },
         { source: "/api/actions", destination: "http://127.0.0.1:8001/api/actions/" },

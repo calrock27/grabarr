@@ -17,6 +17,8 @@ import { Badge } from "@/components/ui/badge"
 import { SearchInput } from "@/components/ui/search-input"
 import { SortableHeader } from "@/components/ui/sortable-header"
 import { useServerDataTable } from "@/hooks/use-server-data-table"
+import { DataTable } from "@/components/common/DataTable"
+import { PageHeader } from "@/components/layout/PageHeader"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
 
 function getActionIcon(type: string) {
@@ -118,14 +120,14 @@ export default function ActionsPage() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        className="hover:text-red-400 hover:bg-red-400/10 transition-colors"
                         onClick={() => {
                             if (confirm('Delete action? This may break jobs using it.')) {
                                 api.deleteAction(row.original.id).then(() => refresh())
                             }
                         }}
                     >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-red-400" />
                     </Button>
                 </div>
             )
@@ -159,16 +161,13 @@ export default function ActionsPage() {
     }
 
     return (
-        <div className="p-8 space-y-6 text-white h-screen">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Actions Library</h2>
-                    <p className="text-muted-foreground mt-2">Create reusable actions for your jobs</p>
-                </div>
-                <Button onClick={() => { setEditingAction(undefined); setOpen(true); }} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 px-6">
-                    <Plus className="mr-2 h-4 w-4" /> New Action
-                </Button>
-            </div>
+        <div className="p-6">
+            <PageHeader
+                title="Actions"
+                description="Atomic operations like shell scripts, API calls, and notifications that can be grouped into jobs."
+                actionLabel="New Action"
+                onAction={() => { setEditingAction(undefined); setOpen(true); }}
+            />
 
             <div className="flex items-center justify-between mb-4">
                 <SearchInput
@@ -178,55 +177,13 @@ export default function ActionsPage() {
                 />
             </div>
 
-            <div className="rounded-md border border-border bg-card">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-                                {headerGroup.headers.map((header) => (
-                                    <TableHead key={header.id}>
-                                        {header.isPlaceholder
-                                            ? null
-                                            : flexRender(
-                                                header.column.columnDef.header,
-                                                header.getContext()
-                                            )}
-                                    </TableHead>
-                                ))}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">
-                                    Loading...
-                                </TableCell>
-                            </TableRow>
-                        ) : table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    className="border-border/50 hover:bg-zinc-800/30 transition-colors cursor-pointer group"
-                                    onClick={() => handleEdit(row.original)}
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="text-center h-24 text-muted-foreground">
-                                    No actions defined
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+            <DataTable
+                table={table}
+                columns={columns}
+                loading={loading}
+                emptyMessage="No actions defined. Create one to get started."
+                onRowClick={handleEdit}
+            />
 
             <ActionDialog
                 open={open}

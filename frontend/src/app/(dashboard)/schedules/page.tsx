@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { api, type Schedule, type ListParams } from "@/lib/api"
+import { api, type Schedule } from "@/lib/api"
 import { toast } from "sonner"
 import { logger } from "@/lib/logger"
 import cronstrue from "cronstrue";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table"
 import { SearchInput } from "@/components/ui/search-input"
 import { SortableHeader } from "@/components/ui/sortable-header"
-import { useDataTable } from "@/hooks/use-data-table"
+import { useServerDataTable } from "@/hooks/use-server-data-table"
 import { ColumnDef, flexRender } from "@tanstack/react-table"
 import { Plus, Trash2, Copy } from "lucide-react"
 import {
@@ -34,29 +34,16 @@ import {
 import { CronBuilder } from "@/components/scheduler/CronBuilder"
 
 export default function SchedulesPage() {
-    const [schedules, setSchedules] = useState<Schedule[]>([])
-    const [loading, setLoading] = useState(true)
     const [editingId, setEditingId] = useState<number | null>(null)
     const [isOpen, setIsOpen] = useState(false)
-    const [searchValue, setSearchValue] = useState("")
-    const [debouncedSearch, setDebouncedSearch] = useState("")
 
-    // State
+    // Form state
     const [name, setName] = useState("")
     const [cronValue, setCronValue] = useState("*/15 * * * *")
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
     const [systemTimezone, setSystemTimezone] = useState<string>("America/New_York")
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedSearch(searchValue), 300)
-        return () => clearTimeout(timer)
-    }, [searchValue])
-
-    useEffect(() => {
-        loadData()
-    }, [debouncedSearch])
-
+    // Load timezone and start clock
     useEffect(() => {
         loadTimezone()
         setCurrentTime(new Date())
@@ -72,83 +59,6 @@ export default function SchedulesPage() {
             }
         } catch (e) {
             console.warn("Failed to load timezone settings")
-        }
-    }
-
-    async function loadData() {
-        setLoading(true)
-        try {
-            const params: ListParams = {}
-            if (debouncedSearch) params.search = debouncedSearch
-            const data = await api.getSchedules(params)
-            setSchedules(data)
-        } catch (err) {
-            console.error(err)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    async function handleDelete(id: number) {
-        if (!confirm("Are you sure?")) return
-        await api.deleteSchedule(id)
-        loadData()
-    }
-
-    function handleClone(sched: Schedule) {
-        setName(`${sched.name} (Copy)`)
-        if (sched.schedule_type === "interval") {
-            setCronValue(`*/${sched.config.minutes} * * * *`)
-        } else {
-            setCronValue(sched.config.cron || "* * * * *")
-        }
-        setEditingId(null) // New create
-        setIsOpen(true)
-    }
-
-    function resetForm() {
-        setName("")
-        setCronValue("*/15 * * * *")
-        setEditingId(null)
-    }
-
-    async function handleCreate() {
-        // Detect if simple interval
-        let type = "cron"
-        let config: any = { cron: cronValue }
-
-        if (cronValue.startsWith("*/") && cronValue.endsWith(" * * * *")) {
-            // It's an interval!
-            const mins = cronValue.split(" ")[0].replace("*/", "")
-            if (!isNaN(parseInt(mins))) {
-                type = "interval"
-                config = { minutes: parseInt(mins) }
-            }
-        }
-
-        try {
-            const payload = {
-                name,
-                schedule_type: type,
-                config
-            }
-
-            if (editingId) {
-                await api.updateSchedule(editingId, payload)
-            } else {
-                await api.createSchedule(payload)
-            }
-
-            setIsOpen(false)
-            resetForm()
-            loadData()
-            toast.success("Schedule saved")
-            logger.success(`Schedule saved: ${name}`)
-        } catch (error: any) {
-            const msg = error.message || "Failed to save schedule"
-            toast.error(msg)
-            logger.error(`Schedule Save Failed: ${msg}`)
-            console.error(error)
         }
     }
 
@@ -231,24 +141,25 @@ export default function SchedulesPage() {
                         <Button
                             variant="ghost"
                             size="icon"
+                            className="hover:text-violet-400 hover:bg-violet-400/10 transition-colors"
                             title="Clone Schedule"
                             onClick={(e) => {
                                 e.stopPropagation()
                                 handleClone(sched)
                             }}
                         >
-                            <Copy className="h-4 w-4 text-blue-400" />
+                            <Copy className="h-4 w-4 text-violet-400" />
                         </Button>
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="hover:text-red-400"
+                            className="hover:text-red-400 hover:bg-red-400/10 transition-colors"
                             onClick={(e) => {
                                 e.stopPropagation()
                                 handleDelete(sched.id)
                             }}
                         >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4 text-red-400" />
                         </Button>
                     </div>
                 )
@@ -256,10 +167,74 @@ export default function SchedulesPage() {
         }
     ]
 
-    const { table } = useDataTable({
-        data: schedules,
+    const { table, loading, searchValue, setSearchValue, refresh } = useServerDataTable({
+        fetchFn: (params) => api.getSchedules(params),
         columns,
+        defaultSortBy: "name",
     })
+
+    async function handleDelete(id: number) {
+        if (!confirm("Are you sure?")) return
+        await api.deleteSchedule(id)
+        refresh()
+    }
+
+    function handleClone(sched: Schedule) {
+        setName(`${sched.name} (Copy)`)
+        if (sched.schedule_type === "interval") {
+            setCronValue(`*/${sched.config.minutes} * * * *`)
+        } else {
+            setCronValue(sched.config.cron || "* * * * *")
+        }
+        setEditingId(null) // New create
+        setIsOpen(true)
+    }
+
+    function resetForm() {
+        setName("")
+        setCronValue("*/15 * * * *")
+        setEditingId(null)
+    }
+
+    async function handleCreate() {
+        // Detect if simple interval
+        let type = "cron"
+        let config: any = { cron: cronValue }
+
+        if (cronValue.startsWith("*/") && cronValue.endsWith(" * * * *")) {
+            // It's an interval!
+            const mins = cronValue.split(" ")[0].replace("*/", "")
+            if (!isNaN(parseInt(mins))) {
+                type = "interval"
+                config = { minutes: parseInt(mins) }
+            }
+        }
+
+        try {
+            const payload = {
+                name,
+                schedule_type: type,
+                config
+            }
+
+            if (editingId) {
+                await api.updateSchedule(editingId, payload)
+            } else {
+                await api.createSchedule(payload)
+            }
+
+            setIsOpen(false)
+            resetForm()
+            refresh()
+            toast.success("Schedule saved")
+            logger.success(`Schedule saved: ${name}`)
+        } catch (error: any) {
+            const msg = error.message || "Failed to save schedule"
+            toast.error(msg)
+            logger.error(`Schedule Save Failed: ${msg}`)
+            console.error(error)
+        }
+    }
 
     return (
         <div className="p-6 space-y-6 text-white min-h-screen">
