@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: grabarr/grabarr
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/grabarr
           tags: |
             type=raw,value=latest
             type=semver,pattern={{version}}
