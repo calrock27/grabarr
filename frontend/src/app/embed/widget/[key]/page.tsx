@@ -50,7 +50,7 @@ export default function EmbedWidgetPage() {
 
     useEffect(() => {
         // Fetch widget config
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/widgets/by-key/${key}`)
+        fetch(`/api/widgets/by-key/${key}`)
             .then(res => {
                 if (!res.ok) throw new Error("Widget not found")
                 return res.json()
@@ -59,7 +59,7 @@ export default function EmbedWidgetPage() {
                 setWidget(data)
 
                 // Connect to SSE for live updates
-                const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/events`)
+                const eventSource = new EventSource(`/api/events`)
 
                 eventSource.onopen = () => setConnected(true)
                 eventSource.onmessage = (event) => {

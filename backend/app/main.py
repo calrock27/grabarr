@@ -16,38 +16,48 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="grabarr", version="0.1.0")
 
 
-async def get_cors_origins():
-    """Get CORS origins from system settings, falling back to environment or localhost."""
+async def get_cors_settings_from_db():
+    """Get CORS settings from system settings, falling back to environment."""
     try:
         async with AsyncSessionLocal() as db:
+            # Get allowed origins
             result = await db.execute(
                 select(SystemSettings).where(SystemSettings.key == "cors_allowed_origins")
             )
             setting = result.scalars().first()
+            origins = []
             if setting and setting.value:
-                # Value stored as list in JSON
                 if isinstance(setting.value, list):
-                    return setting.value
+                    origins = setting.value
                 elif isinstance(setting.value, str):
-                    return [o.strip() for o in setting.value.split(",") if o.strip()]
+                    origins = [o.strip() for o in setting.value.split(",") if o.strip()]
+            
+            # Get allow all setting
+            result = await db.execute(
+                select(SystemSettings).where(SystemSettings.key == "cors_allow_all")
+            )
+            allow_all_setting = result.scalars().first()
+            allow_all = False
+            if allow_all_setting and allow_all_setting.value:
+                allow_all = str(allow_all_setting.value).lower() == "true"
+                
+            return {"origins": origins, "allow_all": allow_all}
     except Exception:
         pass
     
-    # Fall back to environment variable or default
+    # Fall back to environment variable
     env_origins = os.environ.get("GRABARR_CORS_ORIGINS", "")
-    if env_origins:
-        return [o.strip() for o in env_origins.split(",") if o.strip()]
+    origins = [o.strip() for o in env_origins.split(",") if o.strip()] if env_origins else []
     
-    # Default to localhost for development
-    return ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+    return {"origins": origins, "allow_all": False}
 
 
 # SECURITY: Dynamic CORS configuration
 # Will be updated on startup with settings from database
-# For now, start with restrictive defaults
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],
+    allow_origins=[], # Started as empty, updated dynamically or via regex
+    allow_origin_regex=None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,9 +80,21 @@ async def startup():
     await check_and_migrate()
     
     # Update CORS origins from settings
-    origins = await get_cors_origins()
-    logger.info(f"CORS allowed origins: {origins}")
-    # Note: CORS middleware is already added, origins are checked at runtime for dynamic updates
+    cors_settings = await get_cors_settings_from_db()
+    origins = cors_settings["origins"]
+    allow_all = cors_settings["allow_all"]
+    
+    logger.info(f"CORS origins: {origins}, Allow All: {allow_all}")
+    
+    # Update middleware directly
+    for middleware in app.user_middleware:
+        if middleware.cls == CORSMiddleware:
+            if allow_all:
+                middleware.kwargs["allow_origin_regex"] = ".*"
+                middleware.kwargs["allow_origins"] = []
+            else:
+                middleware.kwargs["allow_origins"] = origins
+                middleware.kwargs["allow_origin_regex"] = None
     
     # Start Rclone
     await rclone_manager.start_daemon()

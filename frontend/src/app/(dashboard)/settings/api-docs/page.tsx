@@ -482,6 +482,12 @@ const API_CATEGORIES: EndpointCategory[] = [
                 description: "Restore from encrypted backup",
                 requiresAuth: false,
                 bodySchema: { "multipart/form-data": "file + password" }
+            },
+            {
+                method: "POST",
+                path: "/system/restart",
+                description: "Restart both backend and frontend services",
+                requiresAuth: false
             }
         ]
     },

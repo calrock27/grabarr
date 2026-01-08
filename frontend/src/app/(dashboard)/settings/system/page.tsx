@@ -8,7 +8,16 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Save, Clock, Database, RefreshCw, Download, Upload, Shield, Globe } from "lucide-react"
+import { Save, Clock, Database, RefreshCw, Download, Upload, Shield, Globe, Power, AlertTriangle } from "lucide-react"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
 import { setConfiguredTimezone } from "@/lib/dateUtils"
 import { ALL_TIMEZONES, TIMEZONE_REGIONS } from "@/lib/timezones"
 
@@ -33,6 +42,8 @@ export default function SystemSettingsPage() {
     const [backupLoading, setBackupLoading] = useState(false)
     const [restoreLoading, setRestoreLoading] = useState(false)
     const [restoreFile, setRestoreFile] = useState<File | null>(null)
+    const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false)
+    const [isRestarting, setIsRestarting] = useState(false)
 
     useEffect(() => {
         loadSettings()
@@ -125,6 +136,21 @@ export default function SystemSettingsPage() {
             toast.error(e.message || "Restore failed")
         } finally {
             setRestoreLoading(false)
+        }
+    }
+
+    async function handleRestart() {
+        try {
+            setIsRestarting(true)
+            await api.restartSystem()
+            toast.success("Restart signal sent. grabarr will be back online shortly.")
+            setIsRestartDialogOpen(false)
+            // Optionally redirect after some time? For now just wait.
+        } catch (e: any) {
+            console.error("Restart failed:", e)
+            toast.error(e.message || "Failed to initiate restart")
+        } finally {
+            setIsRestarting(false)
         }
     }
 
@@ -326,6 +352,49 @@ export default function SystemSettingsPage() {
                                 </Button>
                             </div>
                             <p className="text-xs text-zinc-500">⚠️ This will overwrite existing data. Restart required after restore.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* System Management */}
+                <Card className="bg-card border-red-500/20">
+                    <CardHeader>
+                        <CardTitle className="text-white">Reload grabarr</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
+                            <div className="space-y-1">
+                                <h4 className="text-sm font-medium text-white">Restart grabarr</h4>
+                                <p className="text-xs text-zinc-400">Restarts both backend and frontend services.</p>
+                            </div>
+                            <Dialog open={isRestartDialogOpen} onOpenChange={setIsRestartDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button variant="destructive" className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30">
+                                        <Power className="w-4 h-4 mr-2" />
+                                        Restart
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2">
+                                            <AlertTriangle className="w-5 h-5 text-red-500" />
+                                            Confirm System Restart
+                                        </DialogTitle>
+                                        <DialogDescription className="text-zinc-400">
+                                            Are you sure you want to restart grabarr? This will terminate all active transfers and the UI will be temporarily unavailable.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <DialogFooter className="gap-2 sm:gap-0">
+                                        <Button variant="ghost" onClick={() => setIsRestartDialogOpen(false)} disabled={isRestarting}>
+                                            Cancel
+                                        </Button>
+                                        <Button variant="destructive" onClick={handleRestart} disabled={isRestarting}>
+                                            {isRestarting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Power className="w-4 h-4 mr-2" />}
+                                            Restart Now
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </div>
                     </CardContent>
                 </Card>

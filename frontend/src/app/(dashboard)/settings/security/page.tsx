@@ -14,7 +14,8 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Plus, Trash2, Copy, Globe, AlertCircle } from "lucide-react"
+import { Plus, Trash2, Copy, Globe, AlertCircle, ShieldAlert } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import {
     Dialog,
     DialogContent,
@@ -45,6 +46,7 @@ export default function SecurityPage() {
     // CORS Settings State
     const [corsOrigins, setCorsOrigins] = useState<string[]>([])
     const [corsLoading, setCorsLoading] = useState(true)
+    const [allowAll, setAllowAll] = useState(false)
     const [newOrigin, setNewOrigin] = useState("")
     const [corsSaving, setCorsSaving] = useState(false)
 
@@ -68,6 +70,7 @@ export default function SecurityPage() {
         try {
             const data = await api.getCORSSettings()
             setCorsOrigins(data.allowed_origins || [])
+            setAllowAll(data.allow_all || false)
         } catch (err) {
             console.error(err)
         } finally {
@@ -109,20 +112,25 @@ export default function SecurityPage() {
         }
 
         const updatedOrigins = [...corsOrigins, origin]
-        await saveCORSSettings(updatedOrigins)
+        await saveCORSSettings(updatedOrigins, allowAll)
         setNewOrigin("")
     }
 
     async function handleRemoveOrigin(origin: string) {
         const updatedOrigins = corsOrigins.filter(o => o !== origin)
-        await saveCORSSettings(updatedOrigins)
+        await saveCORSSettings(updatedOrigins, allowAll)
     }
 
-    async function saveCORSSettings(origins: string[]) {
+    async function handleToggleAllowAll(enabled: boolean) {
+        await saveCORSSettings(corsOrigins, enabled)
+    }
+
+    async function saveCORSSettings(origins: string[], allowAll: boolean) {
         setCorsSaving(true)
         try {
-            const result = await api.updateCORSSettings(origins)
+            const result = await api.updateCORSSettings(origins, allowAll)
             setCorsOrigins(result.allowed_origins)
+            setAllowAll(result.allow_all)
             toast.success("CORS settings updated. Restart grabarr for changes to take effect.")
         } catch (err) {
             toast.error("Failed to update CORS settings")
@@ -186,7 +194,6 @@ export default function SecurityPage() {
             <Card className="bg-card border-border">
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">API Keys</CardTitle>
-                    <CardDescription>Keys for external integrations to trigger jobs.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>
@@ -240,15 +247,36 @@ export default function SecurityPage() {
             {/* CORS Settings */}
             <Card className="bg-card border-border">
                 <CardHeader className="pb-4">
-                    <div className="flex items-center gap-2">
-                        <Globe className="h-5 w-5 text-primary" />
-                        <CardTitle className="text-lg">CORS Allowed Origins</CardTitle>
-                    </div>
+                    <CardTitle className="text-lg">CORS Allowed Origins</CardTitle>
                     <CardDescription>
                         Configure which domains can access the API. Changes require a grabarr restart.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Allow API traffic from any destination</Label>
+                            <p className="text-xs text-muted-foreground">Allows cross-origin requests from any domain (*)</p>
+                        </div>
+                        <Switch
+                            checked={allowAll}
+                            onCheckedChange={handleToggleAllowAll}
+                            disabled={corsSaving}
+                        />
+                    </div>
+
+                    {allowAll && (
+                        <div className="flex flex-col gap-1 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200">
+                            <div className="flex items-center gap-2 font-semibold">
+                                <ShieldAlert className="h-4 w-4" />
+                                <span>Security Warning</span>
+                            </div>
+                            <p className="text-xs">
+                                Enabling this option allows any website to make requests to your grabarr instance. This should only be used for testing purposes and exposes grabarr to increased security risks.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
                         <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
                         <p className="text-sm text-amber-200">

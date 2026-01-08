@@ -13,20 +13,50 @@
 
 ## Getting Started
 
-### Prerequisites
+### Docker (Recommended)
+
+The easiest way to run grabarr is with Docker:
+
+```bash
+# Create config directory
+mkdir -p ./config
+
+# Run with docker compose
+docker compose up -d
+```
+
+Access grabarr at `http://localhost:3643`
+
+To build locally instead of using the pre-built image:
+
+```bash
+docker compose -f docker-compose.build.yml up --build -d
+```
+
+### Docker Configuration
+
+All persistent data is stored in the `/config` volume:
+- `grabarr.db` - SQLite database
+- `.jwt_secret` - JWT signing key
+- `.grabarr_key` - Credential encryption key
+- `.rclone_auth` - Rclone RC authentication
+
+### Manual Installation
+
+#### Prerequisites
 
 *   Python 3.10+
 *   Node.js 18+
 *   `rclone` installed and in PATH.
 *   `openssl` (for backup encryption).
 
-### Installation
+#### Installation
 
 1.  **Backend**:
     ```bash
     cd backend
     pip install -r requirements.txt
-    python3 run.py
+    GRABARR_DEV_MODE=true python3 run.py
     ```
     Runs on `http://localhost:8001`.
 
@@ -40,8 +70,8 @@
 
 ## Usage
 
-*   **Dashboard**: `http://localhost:3000`
-*   **Embed Widget**: `http://localhost:3000/embed/job/{id}`
+*   **Dashboard**: `http://localhost:3643` (Docker) or `http://localhost:3000` (dev)
+*   **Embed Widget**: `/embed/widget/{key}`
 
 ### Backup & Restore
 
@@ -53,3 +83,14 @@ Navigate to **Settings > System**.
 
 *   **Backend**: FastAPI, SQLAlchemy (SQLite), APScheduler, Rclone RC.
 *   **Frontend**: Next.js 14, TailwindCSS, shadcn/ui.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GRABARR_DB_PATH` | `/config/grabarr.db` | Database file path |
+| `GRABARR_JWT_SECRET_PATH` | `/config/.jwt_secret` | JWT secret key path |
+| `GRABARR_KEY_PATH` | `/config/.grabarr_key` | Encryption key path |
+| `GRABARR_RCLONE_AUTH_PATH` | `/config/.rclone_auth` | Rclone auth path |
+| `GRABARR_DEV_MODE` | `false` | Enable hot-reload for development |
+| `PORT` | `3643` | Frontend port |

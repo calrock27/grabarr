@@ -337,7 +337,6 @@ function WidgetEditorContent() {
                         <div className="flex items-center gap-1">
                             <span className="text-[10px] text-zinc-500 w-12 text-center">{isMockRunning ? 'Running' : 'Idle'}</span>
                             <Switch
-                                size="sm"
                                 checked={isMockRunning}
                                 onCheckedChange={setIsMockRunning}
                             />
@@ -565,7 +564,6 @@ function WidgetEditorContent() {
                                     <div className="flex items-center gap-1">
                                         <span className="text-[10px] text-zinc-500">Responsive</span>
                                         <Switch
-                                            size="sm"
                                             checked={config.style.autoWidth}
                                             onCheckedChange={(val) => updateStyle('autoWidth', val)}
                                         />
@@ -587,7 +585,6 @@ function WidgetEditorContent() {
                                     <div className="flex items-center gap-1">
                                         <span className="text-[10px] text-zinc-500">Responsive</span>
                                         <Switch
-                                            size="sm"
                                             checked={config.style.autoHeight}
                                             onCheckedChange={(val) => updateStyle('autoHeight', val)}
                                         />
@@ -663,7 +660,6 @@ function WidgetEditorContent() {
                                     {config.style.idleBehavior === 'minimal' ? 'Minimal Info' : 'Show Last Stats'}
                                 </span>
                                 <Switch
-                                    size="sm"
                                     checked={config.style.idleBehavior === 'minimal'}
                                     onCheckedChange={(val) => updateStyle('idleBehavior', val ? 'minimal' : 'keep')}
                                 />

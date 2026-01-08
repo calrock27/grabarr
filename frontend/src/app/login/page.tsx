@@ -17,7 +17,7 @@ import {
 import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api"
+const API_BASE = "/api"
 
 export default function LoginPage() {
     const router = useRouter()

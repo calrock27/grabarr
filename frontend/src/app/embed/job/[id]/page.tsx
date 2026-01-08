@@ -17,7 +17,7 @@ export default function EmbedJobPage() {
     useEffect(() => {
         api.getJob(id).then(setJob).catch(console.error)
 
-        const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api"}/events`)
+        const eventSource = new EventSource(`/api/events`)
 
         eventSource.onopen = () => setConnected(true)
         eventSource.onmessage = (event) => {

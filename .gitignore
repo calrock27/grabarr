@@ -45,6 +45,8 @@ backend/get-pip.py
 backend/check_db.py
 backend/test_data/
 backend/bin/
+backend/.jwt_secret
+backend/.rclone_auth
 
 # Frontend (already in frontend/.gitignore but adding here too)
 frontend/node_modules/

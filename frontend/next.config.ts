@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
+const backendUrl = process.env.GRABARR_BACKEND_URL || "http://127.0.0.1:8001";
+
 const nextConfig: NextConfig = {
+  output: 'standalone',
   reactCompiler: true,
   async rewrites() {
     return {
@@ -8,29 +11,30 @@ const nextConfig: NextConfig = {
       afterFiles: [],
       fallback: [
         // Base paths - REQUIRE trailing slash
-        { source: "/api/jobs", destination: "http://127.0.0.1:8001/api/jobs/" },
-        { source: "/api/remotes", destination: "http://127.0.0.1:8001/api/remotes" },
-        { source: "/api/credentials", destination: "http://127.0.0.1:8001/api/credentials" },
-        { source: "/api/schedules", destination: "http://127.0.0.1:8001/api/schedules/" },
-        { source: "/api/actions", destination: "http://127.0.0.1:8001/api/actions/" },
+        { source: "/api/jobs", destination: `${backendUrl}/api/jobs/` },
+        { source: "/api/remotes", destination: `${backendUrl}/api/remotes` },
+        { source: "/api/credentials", destination: `${backendUrl}/api/credentials` },
+        { source: "/api/schedules", destination: `${backendUrl}/api/schedules/` },
+        { source: "/api/actions", destination: `${backendUrl}/api/actions/` },
 
         // Base paths - REQUIRE NO trailing slash
-        { source: "/api/history", destination: "http://127.0.0.1:8001/api/history" },
-        { source: "/api/activity", destination: "http://127.0.0.1:8001/api/activity" },
+        { source: "/api/history", destination: `${backendUrl}/api/history` },
+        { source: "/api/activity", destination: `${backendUrl}/api/activity` },
 
         // Paths with subpaths (ID endpoints usually have NO slash, so we map directly)
-        { source: "/api/jobs/:path*", destination: "http://127.0.0.1:8001/api/jobs/:path*" },
-        { source: "/api/remotes/:path*", destination: "http://127.0.0.1:8001/api/remotes/:path*" },
-        { source: "/api/credentials/:path*", destination: "http://127.0.0.1:8001/api/credentials/:path*" },
-        { source: "/api/schedules/:path*", destination: "http://127.0.0.1:8001/api/schedules/:path*" },
-        { source: "/api/history/:path*", destination: "http://127.0.0.1:8001/api/history/:path*" },
-        { source: "/api/activity/:path*", destination: "http://127.0.0.1:8001/api/activity/:path*" },
-        { source: "/api/settings/:path*", destination: "http://127.0.0.1:8001/api/settings/:path*" },
-        { source: "/api/security/:path*", destination: "http://127.0.0.1:8001/api/security/:path*" },
-        { source: "/api/auth/:path*", destination: "http://127.0.0.1:8001/api/auth/:path*" },
-        { source: "/api/system/:path*", destination: "http://127.0.0.1:8001/api/system/:path*" },
-        { source: "/api/actions/:path*", destination: "http://127.0.0.1:8001/api/actions/:path*" },
-        { source: "/api/widgets/:path*", destination: "http://127.0.0.1:8001/api/widgets/:path*" },
+        { source: "/api/jobs/:path*", destination: `${backendUrl}/api/jobs/:path*` },
+        { source: "/api/remotes/:path*", destination: `${backendUrl}/api/remotes/:path*` },
+        { source: "/api/credentials/:path*", destination: `${backendUrl}/api/credentials/:path*` },
+        { source: "/api/schedules/:path*", destination: `${backendUrl}/api/schedules/:path*` },
+        { source: "/api/history/:path*", destination: `${backendUrl}/api/history/:path*` },
+        { source: "/api/activity/:path*", destination: `${backendUrl}/api/activity/:path*` },
+        { source: "/api/settings/:path*", destination: `${backendUrl}/api/settings/:path*` },
+        { source: "/api/security/:path*", destination: `${backendUrl}/api/security/:path*` },
+        { source: "/api/auth/:path*", destination: `${backendUrl}/api/auth/:path*` },
+        { source: "/api/system/:path*", destination: `${backendUrl}/api/system/:path*` },
+        { source: "/api/actions/:path*", destination: `${backendUrl}/api/actions/:path*` },
+        { source: "/api/widgets/:path*", destination: `${backendUrl}/api/widgets/:path*` },
+        { source: "/api/events", destination: `${backendUrl}/api/events` },
       ],
     }
   },

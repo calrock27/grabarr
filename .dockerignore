@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+.pyo
+
+# Build outputs
+frontend/.next/
+frontend/out/
+*.egg-info/
+
+# Development files
+.git/
+.gitignore
+.vscode/
+*.md
+!README.md
+.env
+.env.*
+*.log
+
+# Development databases (use /config mount in Docker)
+*.db
+*.sqlite
+backend/.jwt_secret
+backend/.grabarr_key
+backend/.rclone_auth
+
+# Test files
+backend/tests/
+frontend/tests/
+*.test.*
+*.spec.*
+
+# Editor/IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

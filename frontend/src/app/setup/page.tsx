@@ -12,7 +12,7 @@ import { Loader2, UserPlus, AlertCircle, CheckCircle2, Globe, ArrowRight } from 
 import { toast } from "sonner"
 import { ALL_TIMEZONES, TIMEZONE_REGIONS } from "@/lib/timezones"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api"
+const API_BASE = "/api"
 
 export default function SetupPage() {
     const router = useRouter()

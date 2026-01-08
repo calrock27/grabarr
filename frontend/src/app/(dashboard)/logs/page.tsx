@@ -21,14 +21,14 @@ export default function LogsPage() {
         try {
             if (type === 'initial') {
                 setLoading(true)
-                const activity = await api.getActivityLog(LIMIT, 0)
+                const activity = await api.getActivityLog({ limit: LIMIT })
                 setActivityLogs(activity)
                 setActivityOffset(0)
                 setHasMoreActivity(activity.length === LIMIT)
             } else {
                 setLoadingMoreActivity(true)
                 const nextOffset = activityOffset + LIMIT
-                const activity = await api.getActivityLog(LIMIT, nextOffset)
+                const activity = await api.getActivityLog({ limit: LIMIT, offset: nextOffset })
                 setActivityLogs(prev => [...prev, ...activity])
                 setActivityOffset(nextOffset)
                 setHasMoreActivity(activity.length === LIMIT)

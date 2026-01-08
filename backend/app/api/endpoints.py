@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Response, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Optional
@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from sqlalchemy import delete
-from ..db import engine, AsyncSessionLocal, get_db
+from ..db import engine, AsyncSessionLocal, get_db, get_database_path
 from ..models import Credential, Remote, Job, JobHistory, ScheduleTemplate, ActivityLog, APIKey, SystemSettings, AdminUser, Action, JobAction, EmbedWidget
 from ..crypto import encrypt_credential_data, decrypt_credential_data, get_key_file_path
 from ..list_params import apply_list_params
@@ -1237,7 +1237,7 @@ async def create_backup(payload: dict):
     tmp_dir = tempfile.mkdtemp()
     try:
         # 1. Copy DB
-        db_path = "grabarr.db"
+        db_path = get_database_path()
         if os.path.exists(db_path):
              shutil.copy2(db_path, os.path.join(tmp_dir, "grabarr.db"))
         else:
@@ -1335,7 +1335,11 @@ async def restore_backup(password: str = Form(...), file: UploadFile = File(...)
         # 1. Restore DB
         restored_db = os.path.join(tmp_dir, "grabarr.db")
         if os.path.exists(restored_db):
-            shutil.move(restored_db, "grabarr.db")
+            db_target = get_database_path()
+            db_dir = os.path.dirname(db_target)
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+            shutil.move(restored_db, db_target)
         else:
              # Maybe it was just config backup? But requirement says export db... 
              # For now, require DB, or warn. 
@@ -1424,6 +1428,36 @@ async def update_system_settings(settings: SystemSettingsUpdate, db: AsyncSessio
     
     # Return updated settings
     return await get_system_settings(db)
+
+
+@router.post("/system/restart")
+async def restart_system(background_tasks: BackgroundTasks):
+    """
+    Triggers a system restart. 
+    Attempts to use supervisorctl if available, otherwise exits the process.
+    """
+    import os
+    import subprocess
+    
+    def perform_restart():
+        # Give some time for the response to be sent
+        import time
+        time.sleep(2)
+        
+        # Check if we are running under supervisor
+        try:
+            # supervisorctl restart all
+            subprocess.run(["supervisorctl", "restart", "all"], check=True)
+            return
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+            
+        # Fallback: Just exit and let the process manager restart us
+        # Note: This only works if there's an external process manager (e.g. Docker restart policy, systemd)
+        os._exit(0)
+
+    background_tasks.add_task(perform_restart)
+    return {"message": "Restart initiated"}
 
 
 # =====================================
@@ -1746,25 +1780,30 @@ async def list_job_widgets(job_id: int, db: AsyncSession = Depends(get_db)):
 
 class CORSSettingsRead(BaseModel):
     allowed_origins: List[str] = []
+    allow_all: bool = False
 
 class CORSSettingsUpdate(BaseModel):
     allowed_origins: List[str]
+    allow_all: bool = False
 
 @router.get("/security/cors", response_model=CORSSettingsRead)
 async def get_cors_settings(db: AsyncSession = Depends(get_db)):
     """Get current CORS allowed origins."""
+    # Origins
     result = await db.execute(
         select(SystemSettings).where(SystemSettings.key == "cors_allowed_origins")
     )
     setting = result.scalars().first()
+    origins = setting.value if setting and setting.value and isinstance(setting.value, list) else []
     
-    if setting and setting.value:
-        origins = setting.value if isinstance(setting.value, list) else []
-    else:
-        # Return default origins
-        origins = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
+    # Allow All
+    result = await db.execute(
+        select(SystemSettings).where(SystemSettings.key == "cors_allow_all")
+    )
+    allow_all_setting = result.scalars().first()
+    allow_all = str(allow_all_setting.value).lower() == "true" if allow_all_setting and allow_all_setting.value else False
     
-    return CORSSettingsRead(allowed_origins=origins)
+    return CORSSettingsRead(allowed_origins=origins, allow_all=allow_all)
 
 @router.put("/security/cors", response_model=CORSSettingsRead)
 async def update_cors_settings(settings: CORSSettingsUpdate, db: AsyncSession = Depends(get_db)):
@@ -1777,18 +1816,28 @@ async def update_cors_settings(settings: CORSSettingsUpdate, db: AsyncSession = 
             # Remove trailing slash if present
             validated_origins.append(origin.rstrip("/"))
     
+    # Update Origins
     result = await db.execute(
         select(SystemSettings).where(SystemSettings.key == "cors_allowed_origins")
     )
     setting = result.scalars().first()
-    
     if setting:
         setting.value = validated_origins
     else:
         db.add(SystemSettings(key="cors_allowed_origins", value=validated_origins))
+        
+    # Update Allow All
+    result = await db.execute(
+        select(SystemSettings).where(SystemSettings.key == "cors_allow_all")
+    )
+    allow_all_setting = result.scalars().first()
+    if allow_all_setting:
+        allow_all_setting.value = str(settings.allow_all).lower()
+    else:
+        db.add(SystemSettings(key="cors_allow_all", value=str(settings.allow_all).lower()))
     
-    await log_activity(db, "update", "cors_settings", None, {"origins": validated_origins})
+    await log_activity(db, "update", "cors_settings", None, {"origins": validated_origins, "allow_all": settings.allow_all})
     await db.commit()
     
-    return CORSSettingsRead(allowed_origins=validated_origins)
+    return CORSSettingsRead(allowed_origins=validated_origins, allow_all=settings.allow_all)
 

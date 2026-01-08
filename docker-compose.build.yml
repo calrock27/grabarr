@@ -1,0 +1,19 @@
+# Docker Compose file for building grabarr locally
+# Usage: docker compose -f docker-compose.build.yml up --build
+
+services:
+  grabarr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: grabarr
+    ports:
+      - "3643:3643"
+    volumes:
+      - ./config:/config
+    environment:
+      - GRABARR_DB_PATH=/config/grabarr.db
+      - GRABARR_JWT_SECRET_PATH=/config/.jwt_secret
+      - GRABARR_KEY_PATH=/config/.grabarr_key
+      - GRABARR_RCLONE_AUTH_PATH=/config/.rclone_auth
+    restart: unless-stopped

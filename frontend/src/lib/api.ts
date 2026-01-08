@@ -217,9 +217,9 @@ export const api = {
     deleteAPIKey: (id: number) => fetchAPI(`/security/keys/${id}`, { method: "DELETE" }),
 
     // CORS Settings
-    getCORSSettings: (): Promise<{ allowed_origins: string[] }> => fetchAPI("/security/cors"),
-    updateCORSSettings: (allowed_origins: string[]): Promise<{ allowed_origins: string[] }> =>
-        fetchAPI("/security/cors", { method: "PUT", body: JSON.stringify({ allowed_origins }) }),
+    getCORSSettings: (): Promise<{ allowed_origins: string[], allow_all: boolean }> => fetchAPI("/security/cors"),
+    updateCORSSettings: (allowed_origins: string[], allow_all: boolean): Promise<{ allowed_origins: string[], allow_all: boolean }> =>
+        fetchAPI("/security/cors", { method: "PUT", body: JSON.stringify({ allowed_origins, allow_all }) }),
 
     getActions: (params?: ListParams) => fetchAPI(`/actions${buildQueryString(params)}`),
     createAction: (data: Omit<Action, "id">) => fetchAPI("/actions", { method: "POST", body: JSON.stringify(data) }),
@@ -261,6 +261,7 @@ export const api = {
         method: 'POST',
         body: formData
     }),
+    restartSystem: () => fetchAPI("/system/restart", { method: "POST" }),
 
     // System Settings
     getSystemSettings: () => fetchAPI("/settings/system"),
