@@ -10,7 +10,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import bcrypt
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer
 from sqlalchemy import select
@@ -165,7 +166,7 @@ def verify_jwt_token(token: str, request_fingerprint: str) -> Optional[dict]:
             return None  # Session hijacking attempt
         
         return payload
-    except JWTError:
+    except PyJWTError:
         return None
 
 

@@ -1,7 +1,7 @@
 # Core framework
-fastapi==0.115.6
+fastapi==0.128.0
 uvicorn==0.34.0
-starlette>=0.40.0  # CVE-2024-47874 fix
+starlette>=0.49.1  # CVE-2025-62727, CVE-2025-54121 fix
 
 # Database
 sqlalchemy==2.0.36
@@ -20,9 +20,8 @@ apscheduler==3.11.0
 python-multipart==0.0.20
 
 # Security
-cryptography==44.0.0
+cryptography>=44.0.1  # CVE-2024-12797 fix
 pyjwt==2.10.1
-python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
 
 # Docker integration

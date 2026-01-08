@@ -18,8 +18,8 @@ RUN npm run build
 # Runtime stage
 FROM python:3.12-alpine
 
-# Install system dependencies
-RUN apk add --no-cache \
+# Install system dependencies and upgrade all packages for security
+RUN apk update && apk upgrade && apk add --no-cache \
     nodejs \
     npm \
     supervisor \
