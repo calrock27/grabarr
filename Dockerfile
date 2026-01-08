@@ -18,22 +18,29 @@ RUN npm run build
 # Runtime stage
 FROM python:3.12-alpine
 
+# Add Alpine Edge main repo for latest curl (CVE-2025-14819, CVE-2025-14017, CVE-2025-14524 fix)
+RUN echo "@edge https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories
+
 # Install system dependencies and upgrade all packages for security
 RUN apk update && apk upgrade && apk add --no-cache \
     nodejs \
     npm \
     supervisor \
-    curl \
+    curl@edge \
     unzip \
     fuse3 \
     ca-certificates
 
-# Install rclone
+# Upgrade pip to fix CVE-2025-8869 (path traversal vulnerability)
+RUN pip install --no-cache-dir --upgrade "pip>=25.2"
+
+# Install rclone then remove unzip binary (CVE-2008-0888 mitigation - not needed at runtime)
 RUN curl -O https://downloads.rclone.org/rclone-current-linux-amd64.zip && \
     unzip rclone-current-linux-amd64.zip && \
     cp rclone-*-linux-amd64/rclone /usr/local/bin/ && \
     chmod +x /usr/local/bin/rclone && \
-    rm -rf rclone-*-linux-amd64* rclone-current-linux-amd64.zip
+    rm -rf rclone-*-linux-amd64* rclone-current-linux-amd64.zip && \
+    rm -f /usr/bin/unzip /usr/bin/funzip /usr/bin/unzipsfx /usr/bin/zipinfo
 
 # Create app user
 RUN addgroup -g 1000 grabarr && \
