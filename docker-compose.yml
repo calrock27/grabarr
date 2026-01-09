@@ -3,7 +3,7 @@
 
 services:
   grabarr:
-    image: grabarr/grabarr:latest
+    image: calrock/grabarr:latest
     container_name: grabarr
     ports:
       - "3643:3643"
