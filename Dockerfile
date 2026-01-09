@@ -29,7 +29,8 @@ RUN apk update && apk upgrade && apk add --no-cache \
     curl@edge \
     unzip \
     fuse3 \
-    ca-certificates
+    ca-certificates \
+    su-exec
 
 # Upgrade pip to fix CVE-2025-8869 (path traversal vulnerability)
 RUN pip install --no-cache-dir --upgrade "pip>=25.2"
@@ -67,6 +68,10 @@ COPY --from=frontend-builder /app/frontend/public /app/frontend/public
 # Copy supervisord configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Set ownership
 RUN chown -R grabarr:grabarr /app
 
@@ -90,8 +95,5 @@ VOLUME /config
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3643/api/auth/status || exit 1
 
-# Run as grabarr user
-USER grabarr
-
-# Start supervisord
-CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Entrypoint handles permissions and drops to grabarr user
+ENTRYPOINT ["/entrypoint.sh"]
