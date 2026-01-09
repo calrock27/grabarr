@@ -14,4 +14,8 @@ services:
       - GRABARR_JWT_SECRET_PATH=/config/.jwt_secret
       - GRABARR_KEY_PATH=/config/.grabarr_key
       - GRABARR_RCLONE_AUTH_PATH=/config/.rclone_auth
+      # Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)
+      # - GRABARR_LOG_LEVEL=INFO
+      # Rclone API timeout in seconds - increase if SFTP connections are slow (default: 60)
+      # - GRABARR_RCLONE_TIMEOUT=60
     restart: unless-stopped

@@ -10,8 +10,22 @@ from sqlalchemy import select
 import logging
 import os
 
-logging.basicConfig(level=logging.INFO)
+# Configurable log level via environment variable
+# Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL = os.environ.get("GRABARR_LOG_LEVEL", "INFO").upper()
+LOG_LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+logging.basicConfig(
+    level=LOG_LEVEL_MAP.get(LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
+logger.info(f"Log level set to: {LOG_LEVEL}")
 
 app = FastAPI(title="grabarr", version="0.1.0")
 

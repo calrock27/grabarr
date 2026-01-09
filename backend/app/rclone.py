@@ -7,6 +7,10 @@ import secrets
 
 logger = logging.getLogger(__name__)
 
+# Configurable timeout for rclone API calls (in seconds)
+# SFTP/SSH connections can take longer to establish, especially over slow networks
+RCLONE_TIMEOUT = int(os.environ.get("GRABARR_RCLONE_TIMEOUT", "60"))
+
 # SECURITY: Rclone RC authentication credentials
 # Auto-generated on first run and persisted
 RCLONE_AUTH_PATH = os.environ.get("GRABARR_RCLONE_AUTH_PATH", "/config/.rclone_auth")
@@ -100,7 +104,7 @@ class RcloneManager:
 
     async def call(self, command: str, params: dict = None):
         """Make authenticated call to rclone RC API."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=RCLONE_TIMEOUT) as client:
             try:
                 # SECURITY: Use basic auth for rclone API calls
                 auth = (self.username, self.password) if self.username else None
@@ -111,8 +115,14 @@ class RcloneManager:
                 )
                 resp.raise_for_status()
                 return resp.json()
+            except httpx.TimeoutException as e:
+                logger.error(f"Rclone call timed out after {RCLONE_TIMEOUT}s on {command}: {type(e).__name__}")
+                raise
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Rclone call failed with HTTP {e.response.status_code} on {command}: {e.response.text}")
+                raise
             except Exception as e:
-                logger.error(f"Rclone call failed: {e}")
+                logger.error(f"Rclone call failed on {command}: {type(e).__name__}: {e}")
                 raise
 
 rclone_manager = RcloneManager()
