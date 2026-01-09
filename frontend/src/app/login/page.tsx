@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
@@ -25,6 +25,31 @@ export default function LoginPage() {
     const [password, setPassword] = useState("")
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState("")
+    const [checkingSetup, setCheckingSetup] = useState(true)
+
+    // Check if setup is complete - redirect to /setup if no admin exists
+    useEffect(() => {
+        const checkSetupStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/auth/status`, {
+                    credentials: "include"
+                })
+                const data = await res.json()
+
+                if (!data.setup_complete) {
+                    router.push("/setup")
+                    return
+                }
+            } catch (err) {
+                // If we can't check status, show login anyway
+                console.error("Failed to check setup status:", err)
+            } finally {
+                setCheckingSetup(false)
+            }
+        }
+
+        checkSetupStatus()
+    }, [router])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -53,6 +78,15 @@ export default function LoginPage() {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Show loading state while checking setup status
+    if (checkingSetup) {
+        return (
+            <div className="min-h-screen bg-[#1a1a1a] flex items-center justify-center p-4">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        )
     }
 
     return (
