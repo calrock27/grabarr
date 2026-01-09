@@ -83,8 +83,23 @@ class RcloneManager:
                 return
         
         # SECURITY: Use authentication for rclone RC daemon and bind to localhost only
+        # Use explicit config path to prevent permission errors in containers
+        config_path = os.environ.get("GRABARR_RCLONE_CONFIG_PATH", "/config/rclone.conf")
+        # Ensure config file exists (rclone needs it even if empty)
+        config_dir = os.path.dirname(config_path)
+        if config_dir:
+            os.makedirs(config_dir, exist_ok=True)
+        if not os.path.exists(config_path):
+            try:
+                with open(config_path, "w") as f:
+                    f.write("# Rclone config - managed by grabarr\n")
+                logger.info(f"Created empty rclone config at {config_path}")
+            except Exception as e:
+                logger.warning(f"Could not create rclone config at {config_path}: {e}")
+        
         cmd = [
             rclone_bin, "rcd",
+            "--config", config_path,  # Use explicit config to avoid permission issues
             "--rc-user", self.username,
             "--rc-pass", self.password,
             "--rc-addr", "localhost:5572"  # Bind to localhost only
