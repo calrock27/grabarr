@@ -14,7 +14,6 @@ from typing import Dict, Optional
 from dataclasses import dataclass, field
 
 from .rclone import rclone_manager
-from .crypto import decrypt_credential_data
 
 logger = logging.getLogger(__name__)
 

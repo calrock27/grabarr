@@ -92,5 +92,95 @@ Navigate to **Settings > System**.
 | `GRABARR_JWT_SECRET_PATH` | `/config/.jwt_secret` | JWT secret key path |
 | `GRABARR_KEY_PATH` | `/config/.grabarr_key` | Encryption key path |
 | `GRABARR_RCLONE_AUTH_PATH` | `/config/.rclone_auth` | Rclone auth path |
+| `GRABARR_RCLONE_CONFIG_PATH` | `/config/rclone.conf` | Rclone config file path |
+| `GRABARR_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+| `GRABARR_RCLONE_TIMEOUT` | `60` | Rclone API timeout in seconds |
+| `GRABARR_BROWSE_SESSION_TIMEOUT` | `300` | Browse session timeout in seconds |
 | `GRABARR_DEV_MODE` | `false` | Enable hot-reload for development |
 | `PORT` | `3643` | Frontend port |
+
+## API Endpoints
+
+All endpoints require authentication unless otherwise noted.
+
+### Authentication
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/status` | GET | Check auth status (public) |
+| `/api/auth/login` | POST | Login with username/password |
+| `/api/auth/logout` | POST | Logout |
+| `/api/auth/setup` | POST | Initial admin setup (public) |
+
+### Jobs
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/jobs` | GET | List all jobs |
+| `/api/jobs` | POST | Create a job |
+| `/api/jobs/{id}` | GET | Get job details |
+| `/api/jobs/{id}` | PATCH | Update job |
+| `/api/jobs/{id}` | DELETE | Delete job |
+| `/api/jobs/{id}/run` | POST | Run job |
+| `/api/jobs/{id}/stop` | POST | Stop running job |
+
+### Remotes (Targets)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/remotes` | GET | List remotes |
+| `/api/remotes` | POST | Create remote |
+| `/api/remotes/{id}` | PUT | Update remote |
+| `/api/remotes/{id}` | DELETE | Delete remote |
+| `/api/remotes/{id}/test` | POST | Test remote connection |
+| `/api/remotes/{id}/browse` | POST | Browse remote filesystem |
+
+### Browse Sessions (Connection Pooling)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/browse/start` | POST | Start a browse session for a remote |
+| `/api/browse/{session_id}` | POST | Browse using existing session |
+| `/api/browse/end/{session_id}` | POST | End browse session |
+
+### Credentials
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/credentials` | GET | List credentials |
+| `/api/credentials` | POST | Create credential |
+| `/api/credentials/{id}` | PUT | Update credential |
+| `/api/credentials/{id}` | DELETE | Delete credential |
+
+### Schedules
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/schedules` | GET | List schedules |
+| `/api/schedules` | POST | Create schedule |
+| `/api/schedules/{id}` | PUT | Update schedule |
+| `/api/schedules/{id}` | DELETE | Delete schedule |
+
+### Actions
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/actions` | GET | List actions |
+| `/api/actions` | POST | Create action |
+| `/api/actions/{id}` | PUT | Update action |
+| `/api/actions/{id}` | DELETE | Delete action |
+
+### Widgets
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/widgets` | GET | List widgets |
+| `/api/widgets` | POST | Create widget |
+| `/api/widgets/{id}` | PUT | Update widget |
+| `/api/widgets/{id}` | DELETE | Delete widget |
+| `/api/widgets/{id}/rotate-key` | POST | Rotate widget embed key |
+
+### System
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/system/backup` | POST | Download encrypted backup |
+| `/api/system/restore` | POST | Restore from backup |
+| `/api/settings/system` | GET/PUT | System settings |
+| `/api/security/keys` | GET/POST | API keys |
+| `/api/security/cors` | GET/PUT | CORS settings |
+| `/api/history` | GET | Job history |
+| `/api/activity` | GET | Activity log |
+| `/api/events` | GET | SSE stream for real-time updates |
+

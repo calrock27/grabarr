@@ -42,21 +42,28 @@ export function FileBrowser({
     // Session management for connection pooling
     const [sessionId, setSessionId] = useState<string | null>(null)
     const sessionRemoteId = useRef<number | null>(null)
+    const sessionIdRef = useRef<string | null>(null)  // Ref for cleanup
+
+    // Keep ref in sync with state
+    useEffect(() => {
+        sessionIdRef.current = sessionId
+    }, [sessionId])
 
     // Start session when remoteId changes
     useEffect(() => {
         if (!remoteId) return
 
         // If we already have a session for this remote, skip
-        if (sessionId && sessionRemoteId.current === remoteId) return
+        if (sessionIdRef.current && sessionRemoteId.current === remoteId) return
 
         let cancelled = false
+        const previousSessionId = sessionIdRef.current
 
         async function startSession() {
             try {
                 // End previous session if exists
-                if (sessionId) {
-                    await api.endBrowseSession(sessionId).catch(() => { })
+                if (previousSessionId) {
+                    await api.endBrowseSession(previousSessionId).catch(() => { })
                 }
 
                 const result = await api.startBrowseSession(remoteId)
@@ -77,14 +84,15 @@ export function FileBrowser({
         }
     }, [remoteId])
 
-    // End session on unmount
+    // End session on unmount only
     useEffect(() => {
         return () => {
-            if (sessionId) {
-                api.endBrowseSession(sessionId).catch(() => { })
+            // Use ref to get current session ID at cleanup time
+            if (sessionIdRef.current) {
+                api.endBrowseSession(sessionIdRef.current).catch(() => { })
             }
         }
-    }, [sessionId])
+    }, [])  // Empty deps - only runs on unmount
 
     // Load path when path or session changes
     useEffect(() => {
