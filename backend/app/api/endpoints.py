@@ -260,11 +260,95 @@ async def test_remote_by_id(remote_id: int, db: AsyncSession = Depends(get_db)):
 # --- Browsing ---
 class BrowseRequest(BaseModel):
     path: str = ""
+    session_id: Optional[str] = None  # Optional session for connection pooling
+
+class BrowseSessionStartRequest(BaseModel):
+    remote_id: int
+
+class BrowseSessionResponse(BaseModel):
+    session_id: str
+    remote_id: int
+    remote_type: str
+
+@router.post("/browse/start", response_model=BrowseSessionResponse)
+async def start_browse_session(payload: BrowseSessionStartRequest, db: AsyncSession = Depends(get_db)):
+    """Start a persistent browse session for efficient directory navigation."""
+    from ..browse_sessions import browse_session_manager
+    
+    # Get remote and credential
+    result = await db.execute(select(Remote).where(Remote.id == payload.remote_id))
+    remote = result.scalar_one_or_none()
+    if not remote:
+        raise HTTPException(status_code=404, detail="Remote not found")
+    
+    # Get credential if linked
+    credential_data = None
+    if remote.credential_id:
+        cred_result = await db.execute(select(Credential).where(Credential.id == remote.credential_id))
+        cred = cred_result.scalar_one_or_none()
+        if cred:
+            credential_data = decrypt_credential_data(cred.data)
+    
+    try:
+        session_id = await browse_session_manager.create_session(
+            remote_id=remote.id,
+            remote_type=remote.type,
+            remote_config=remote.config,
+            credential_data=credential_data
+        )
+        
+        return BrowseSessionResponse(
+            session_id=session_id,
+            remote_id=remote.id,
+            remote_type=remote.type
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start browse session: {str(e)}")
+
+@router.post("/browse/{session_id}")
+async def browse_with_session(session_id: str, payload: BrowseRequest):
+    """Browse a path using an existing session (connection pooled)."""
+    from ..browse_sessions import browse_session_manager
+    
+    try:
+        items = await browse_session_manager.browse(session_id, payload.path)
+        return items
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/browse/end/{session_id}")
+async def end_browse_session(session_id: str):
+    """End a browse session and cleanup resources."""
+    from ..browse_sessions import browse_session_manager
+    
+    await browse_session_manager.end_session(session_id)
+    return {"ok": True}
 
 @router.post("/remotes/{remote_id}/browse")
 async def browse_remote(remote_id: int, payload: BrowseRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Browse a remote path. 
+    
+    If session_id is provided, uses the existing session (faster).
+    Otherwise, creates a one-off connection (backward compatible).
+    """
     from ..runner import job_runner, rclone_manager
-    # 1. Get Remote & Cred
+    from ..browse_sessions import browse_session_manager
+    
+    # If session_id provided, use session-based browsing
+    if payload.session_id:
+        try:
+            items = await browse_session_manager.browse(payload.session_id, payload.path)
+            return items
+        except ValueError:
+            # Session not found, fall through to legacy behavior
+            pass
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    # Legacy: Create one-off connection (backward compatible)
     query = select(Remote).where(Remote.id == remote_id)
     result = await db.execute(query)
     remote = result.scalar_one_or_none()
@@ -277,31 +361,11 @@ async def browse_remote(remote_id: int, payload: BrowseRequest, db: AsyncSession
         c_res = await db.execute(c_query)
         cred = c_res.scalar_one_or_none()
         
-    # 2. Get FS String (Base)
-    # We want to list the requested path relative to the remote root? 
-    # Actually, browsing usually implies absolute path or relative to configured base.
-    # JobRunner.get_fs_string appends config path. 
-    # If we want to browse *subfolders* of that config path, we append payload.path.
-    
-    # Let's get the base FS string first
     base_fs = await job_runner.get_fs_string(remote, cred)
-    
-    # If base_fs ends with :, it's root. If it has path, it's subfolder.
-    # We append browsing path.
-    # rclone syntax: remote:path/to/browse
-    
-    # We need to be careful about not doubling separators, but get_fs_string handles some.
-    # Simplest: Just use operations/list with fs=base_fs and remote=payload.path
-    
     target_fs = base_fs
     target_remote = payload.path
     
-    # Rclone operations/list
-    # fs: remote:
-    # remote: path/to/dir
-    
     try:
-        # We use max_depth=1 to just list current dir
         result = await rclone_manager.call("operations/list", {
             "fs": target_fs,
             "remote": target_remote,

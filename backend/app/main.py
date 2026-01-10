@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .db import engine, Base, AsyncSessionLocal
 from .rclone import rclone_manager
 from .scheduler import start_scheduler, shutdown_scheduler, sync_scheduler_jobs
+from .browse_sessions import browse_session_manager
 from .migrations import check_and_migrate
 from .api.endpoints import router as api_router, public_router
 from .models import SystemSettings
@@ -113,12 +114,17 @@ async def startup():
     # Start Rclone
     await rclone_manager.start_daemon()
     
+    # Start Browse Session Manager
+    await browse_session_manager.start()
+    
     # Start Scheduler
     start_scheduler()
     await sync_scheduler_jobs()
 
 @app.on_event("shutdown")
 async def shutdown():
+    # Stop browse sessions first (uses rclone)
+    await browse_session_manager.stop()
     rclone_manager.stop_daemon()
     shutdown_scheduler()
 

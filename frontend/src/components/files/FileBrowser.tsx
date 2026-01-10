@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Folder, File, ChevronRight, Home, ArrowUp, FolderOpen, FileStack, Ban } from "lucide-react"
@@ -39,11 +39,59 @@ export function FileBrowser({
     const [copyMode, setCopyMode] = useState<CopyMode>('folder')
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: FileItem } | null>(null)
 
+    // Session management for connection pooling
+    const [sessionId, setSessionId] = useState<string | null>(null)
+    const sessionRemoteId = useRef<number | null>(null)
+
+    // Start session when remoteId changes
+    useEffect(() => {
+        if (!remoteId) return
+
+        // If we already have a session for this remote, skip
+        if (sessionId && sessionRemoteId.current === remoteId) return
+
+        let cancelled = false
+
+        async function startSession() {
+            try {
+                // End previous session if exists
+                if (sessionId) {
+                    await api.endBrowseSession(sessionId).catch(() => { })
+                }
+
+                const result = await api.startBrowseSession(remoteId)
+                if (!cancelled) {
+                    setSessionId(result.session_id)
+                    sessionRemoteId.current = remoteId
+                }
+            } catch (e: any) {
+                console.error("Failed to start browse session:", e)
+                // Fall back to non-session browsing
+            }
+        }
+
+        startSession()
+
+        return () => {
+            cancelled = true
+        }
+    }, [remoteId])
+
+    // End session on unmount
+    useEffect(() => {
+        return () => {
+            if (sessionId) {
+                api.endBrowseSession(sessionId).catch(() => { })
+            }
+        }
+    }, [sessionId])
+
+    // Load path when path or session changes
     useEffect(() => {
         if (remoteId) {
             loadPath(path)
         }
-    }, [path, remoteId])
+    }, [path, remoteId, sessionId])
 
     useEffect(() => {
         onSelectPath(path, copyMode)
@@ -61,7 +109,13 @@ export function FileBrowser({
         setLoading(true)
         setError(null)
         try {
-            const res = await api.browseRemote(remoteId, targetPath)
+            // Use session-based browsing if session exists, otherwise fall back to legacy
+            let res: FileItem[]
+            if (sessionId) {
+                res = await api.browseSession(sessionId, targetPath)
+            } else {
+                res = await api.browseRemote(remoteId, targetPath)
+            }
             const sorted = res.sort((a: FileItem, b: FileItem) => {
                 if (a.IsDir && !b.IsDir) return -1
                 if (!a.IsDir && b.IsDir) return 1

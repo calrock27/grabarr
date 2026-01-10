@@ -246,7 +246,29 @@ export const api = {
     deleteJob: (id: number) => fetchAPI(`/jobs/${id}`, { method: "DELETE" }),
     deleteCredential: (id: number) => fetchAPI(`/credentials/${id}`, { method: "DELETE" }),
     deleteRemote: (id: number) => fetchAPI(`/remotes/${id}`, { method: "DELETE" }),
-    browseRemote: (id: number, path: string) => fetchAPI(`/remotes/${id}/browse`, { method: "POST", body: JSON.stringify({ path }) }),
+
+    // File browsing - legacy (creates new connection each time)
+    browseRemote: (id: number, path: string, sessionId?: string) =>
+        fetchAPI(`/remotes/${id}/browse`, {
+            method: "POST",
+            body: JSON.stringify({ path, session_id: sessionId })
+        }),
+
+    // Session-based browsing (connection pooled - faster)
+    startBrowseSession: (remoteId: number): Promise<{ session_id: string; remote_id: number; remote_type: string }> =>
+        fetchAPI("/browse/start", {
+            method: "POST",
+            body: JSON.stringify({ remote_id: remoteId })
+        }),
+
+    browseSession: (sessionId: string, path: string = ""): Promise<any[]> =>
+        fetchAPI(`/browse/${sessionId}`, {
+            method: "POST",
+            body: JSON.stringify({ path })
+        }),
+
+    endBrowseSession: (sessionId: string): Promise<{ ok: boolean }> =>
+        fetchAPI(`/browse/end/${sessionId}`, { method: "POST" }),
 
     getHistory: (params?: ListParams) => fetchAPI(`/history${buildQueryString(params)}`),
     getActivityLog: (params?: ListParams) => fetchAPI(`/activity${buildQueryString(params)}`),
