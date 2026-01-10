@@ -26,3 +26,6 @@ bcrypt==4.2.1
 
 # Docker integration
 docker==7.1.0
+
+# SSH for persistent browse connections
+asyncssh==2.18.0
