@@ -39,10 +39,11 @@ export function FileBrowser({
     const [copyMode, setCopyMode] = useState<CopyMode>('folder')
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: FileItem } | null>(null)
 
-    // Session management for connection pooling
+    // Session management for SSH connection pooling
     const [sessionId, setSessionId] = useState<string | null>(null)
+    const [sessionReady, setSessionReady] = useState(false)
     const sessionRemoteId = useRef<number | null>(null)
-    const sessionIdRef = useRef<string | null>(null)  // Ref for cleanup
+    const sessionIdRef = useRef<string | null>(null)
 
     // Keep ref in sync with state
     useEffect(() => {
@@ -59,6 +60,9 @@ export function FileBrowser({
         let cancelled = false
         const previousSessionId = sessionIdRef.current
 
+        setSessionReady(false)
+        setLoading(true)
+
         async function startSession() {
             try {
                 // End previous session if exists
@@ -68,12 +72,17 @@ export function FileBrowser({
 
                 const result = await api.startBrowseSession(remoteId)
                 if (!cancelled) {
+                    console.log("SSH browse session started:", result.session_id)
                     setSessionId(result.session_id)
                     sessionRemoteId.current = remoteId
+                    setSessionReady(true)
                 }
             } catch (e: any) {
                 console.error("Failed to start browse session:", e)
-                // Fall back to non-session browsing
+                // Mark as ready anyway - will fall back to legacy browsing
+                if (!cancelled) {
+                    setSessionReady(true)
+                }
             }
         }
 
@@ -87,19 +96,18 @@ export function FileBrowser({
     // End session on unmount only
     useEffect(() => {
         return () => {
-            // Use ref to get current session ID at cleanup time
             if (sessionIdRef.current) {
                 api.endBrowseSession(sessionIdRef.current).catch(() => { })
             }
         }
-    }, [])  // Empty deps - only runs on unmount
+    }, [])
 
-    // Load path when path or session changes
+    // Load path when path changes OR when session becomes ready
     useEffect(() => {
-        if (remoteId) {
+        if (remoteId && sessionReady) {
             loadPath(path)
         }
-    }, [path, remoteId, sessionId])
+    }, [path, remoteId, sessionReady])
 
     useEffect(() => {
         onSelectPath(path, copyMode)
@@ -120,8 +128,10 @@ export function FileBrowser({
             // Use session-based browsing if session exists, otherwise fall back to legacy
             let res: FileItem[]
             if (sessionId) {
+                console.log("Browsing with SSH session:", sessionId, "path:", targetPath)
                 res = await api.browseSession(sessionId, targetPath)
             } else {
+                console.log("Browsing with legacy (no session), path:", targetPath)
                 res = await api.browseRemote(remoteId, targetPath)
             }
             const sorted = res.sort((a: FileItem, b: FileItem) => {
