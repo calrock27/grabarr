@@ -149,10 +149,40 @@ const API_CATEGORIES: EndpointCategory[] = [
             {
                 method: "POST",
                 path: "/remotes/{remote_id}/browse",
-                description: "Browse files on a remote",
+                description: "Browse files on a remote (legacy, or with optional session_id)",
                 requiresAuth: false,
                 pathParams: [{ name: "remote_id", type: "integer", required: true, description: "Remote ID" }],
-                bodySchema: { path: "string" }
+                bodySchema: { path: "string", session_id: "string? (optional, for connection pooling)" }
+            }
+        ]
+    },
+    {
+        name: "Browse Sessions",
+        icon: <Server className="w-4 h-4" />,
+        description: "Session-based file browsing with connection pooling for faster directory navigation",
+        endpoints: [
+            {
+                method: "POST",
+                path: "/browse/start",
+                description: "Start a browse session for a remote (creates persistent rclone connection)",
+                requiresAuth: false,
+                bodySchema: { remote_id: "number (required)" },
+                responseSchema: { session_id: "string", remote_id: "number", remote_type: "string" }
+            },
+            {
+                method: "POST",
+                path: "/browse/{session_id}",
+                description: "Browse a path using an existing session (connection pooled, faster)",
+                requiresAuth: false,
+                pathParams: [{ name: "session_id", type: "string", required: true, description: "Session ID from /browse/start" }],
+                bodySchema: { path: "string (default: empty for root)" }
+            },
+            {
+                method: "POST",
+                path: "/browse/end/{session_id}",
+                description: "End a browse session and cleanup resources",
+                requiresAuth: false,
+                pathParams: [{ name: "session_id", type: "string", required: true, description: "Session ID to end" }]
             }
         ]
     },
