@@ -809,7 +809,8 @@ async def stop_job_endpoint(job_id: int, db: AsyncSession = Depends(get_db)):
 from ..events import event_manager
 from starlette.responses import StreamingResponse
 
-@router.get("/events")
+# SSE endpoint must be public - EventSource doesn't send auth cookies
+@public_router.get("/events")
 async def events():
     return StreamingResponse(event_manager.subscribe(), media_type="text/event-stream")
 
