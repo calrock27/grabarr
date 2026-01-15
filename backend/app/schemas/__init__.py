@@ -47,6 +47,17 @@ class RemoteRead(BaseModel):
 
 class BrowseRequest(BaseModel):
     path: str = ""
+    session_id: Optional[str] = None
+
+
+class BrowseSessionStartRequest(BaseModel):
+    remote_id: int
+
+
+class BrowseSessionResponse(BaseModel):
+    session_id: str
+    remote_id: int
+    remote_type: str
 
 
 # --- Actions ---
@@ -104,6 +115,8 @@ class JobCreate(BaseModel):
     allow_concurrent_runs: Optional[bool] = False
     max_concurrent_runs: Optional[int] = 1
     use_checksum: Optional[bool] = False
+    sequential_transfer: Optional[bool] = False
+    preserve_metadata: Optional[bool] = False
     actions: Optional[List[JobActionCreate]] = []
 
 
@@ -120,6 +133,8 @@ class JobUpdate(BaseModel):
     allow_concurrent_runs: Optional[bool] = None
     max_concurrent_runs: Optional[int] = None
     use_checksum: Optional[bool] = None
+    sequential_transfer: Optional[bool] = None
+    preserve_metadata: Optional[bool] = None
     actions: Optional[List[JobActionCreate]] = None
 
 
@@ -144,6 +159,8 @@ class JobRead(BaseModel):
     allow_concurrent_runs: Optional[bool] = False
     max_concurrent_runs: Optional[int] = 1
     use_checksum: Optional[bool] = False
+    sequential_transfer: Optional[bool] = False
+    preserve_metadata: Optional[bool] = False
     actions: List[JobActionRead] = []
     
     class Config:

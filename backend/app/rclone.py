@@ -102,7 +102,8 @@ class RcloneManager:
             "--config", config_path,  # Use explicit config to avoid permission issues
             "--rc-user", self.username,
             "--rc-pass", self.password,
-            "--rc-addr", "localhost:5572"  # Bind to localhost only
+            "--rc-addr", "localhost:5572",  # Bind to localhost only
+            "-vv"  # Verbose logging for troubleshooting
         ]
         try:
             self.process = subprocess.Popen(cmd)

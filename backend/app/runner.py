@@ -261,10 +261,6 @@ class JobRunner:
             if job.dest_path:
                 dst_fs = f"{dst_fs.rstrip('/')}/{job.dest_path.strip('/')}"
             
-            # Apply Job-specific Dest Path
-            if job.dest_path:
-                dst_fs = f"{dst_fs.rstrip('/')}/{job.dest_path.strip('/')}"
-            
             # Context for actions
             action_context = {
                 "job": {
@@ -315,6 +311,19 @@ class JobRunner:
                 if "_config" not in params:
                     params["_config"] = {}
                 params["_config"]["CheckSum"] = True
+            
+            # Apply sequential transfer mode (one file at a time)
+            if job.sequential_transfer:
+                if "_config" not in params:
+                    params["_config"] = {}
+                params["_config"]["Transfers"] = 1
+                params["_config"]["Checkers"] = 1
+            
+            # Apply metadata preservation
+            if job.preserve_metadata:
+                if "_config" not in params:
+                    params["_config"] = {}
+                params["_config"]["Metadata"] = True
             
             # Apply Excludes
             if job.excludes:
@@ -402,6 +411,8 @@ class JobRunner:
                          "allow_concurrent_runs": job.allow_concurrent_runs,
                          "max_concurrent_runs": job.max_concurrent_runs,
                          "use_checksum": job.use_checksum,
+                         "sequential_transfer": job.sequential_transfer,
+                         "preserve_metadata": job.preserve_metadata,
                          "execution_type": execution_type,
                      }
 
@@ -674,6 +685,36 @@ class JobRunner:
                 params.append("force_path_style=true")
             
             return f":s3,{','.join(params)}:{bucket}"
+        
+        elif remote.type == "http":
+            # HTTP uses 'url' config
+            url = remote.config.get("url", "")
+            if not url:
+                raise ValueError("HTTP remote requires a URL")
+            return f":http,url='{url}':"
+        
+        elif remote.type == "webdav":
+            # WebDAV uses 'url' and optionally user/pass
+            url = remote.config.get("url", "")
+            vendor = remote.config.get("vendor", "other")
+            if not url:
+                raise ValueError("WebDAV remote requires a URL")
+            
+            params = [f"url='{url}'", f"vendor='{vendor}'"]
+            
+            if credential:
+                cred_data = decrypt_credential_data(credential.data)
+                user = cred_data.get("user", "") or cred_data.get("username", "")
+                password = cred_data.get("password", "")
+                
+                if user:
+                    params.append(f"user='{user}'")
+                
+                obs_pass = await self._obscure(password)
+                if obs_pass:
+                    params.append(f"pass='{obs_pass}'")
+
+            return f":webdav,{','.join(params)}:"
         
         # Generic helper for connection strings
         params = []

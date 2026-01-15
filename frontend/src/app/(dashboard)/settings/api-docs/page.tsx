@@ -266,6 +266,8 @@ const API_CATEGORIES: EndpointCategory[] = [
                     transfer_method: "string? (direct|proxy)",
                     copy_mode: "string? (folder|contents)",
                     use_checksum: "boolean?",
+                    sequential_transfer: "boolean? (one file at a time)",
+                    preserve_metadata: "boolean? (preserve permissions/metadata)",
                     actions: "JobActionCreate[]?"
                 }
             },
@@ -290,7 +292,15 @@ const API_CATEGORIES: EndpointCategory[] = [
                 description: "Partially update a job",
                 requiresAuth: false,
                 pathParams: [{ name: "job_id", type: "integer", required: true, description: "Job ID" }],
-                bodySchema: { name: "string?", enabled: "boolean?", schedule: "string?", actions: "JobActionCreate[]?" }
+                bodySchema: {
+                    name: "string?",
+                    enabled: "boolean?",
+                    schedule: "string?",
+                    use_checksum: "boolean?",
+                    sequential_transfer: "boolean?",
+                    preserve_metadata: "boolean?",
+                    actions: "JobActionCreate[]?"
+                }
             },
             {
                 method: "DELETE",

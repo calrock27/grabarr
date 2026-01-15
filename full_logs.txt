@@ -1,0 +1,204 @@
+2026-01-12 19:10:34,836 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:34,837 INFO sqlalchemy.engine.Engine INSERT INTO activity_log (action, entity_type, entity_id, details, timestamp) VALUES (?, ?, ?, ?, ?)
+2026-01-12 19:10:34,837 INFO sqlalchemy.engine.Engine [cached since 145.5s ago] ('stop', 'job', 1, '{}', '2026-01-12 19:10:34.836988')
+2026-01-12 19:10:34,838 INFO sqlalchemy.engine.Engine COMMIT
+INFO:     127.0.0.1:43614 - "POST /api/jobs/1/stop HTTP/1.1" 200 OK
+2026-01-12 19:10:35,693 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:35,693 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:10:35,693 INFO sqlalchemy.engine.Engine [cached since 146.4s ago] (1,)
+2026-01-12 19:10:35,695 INFO sqlalchemy.engine.Engine UPDATE jobs SET last_status=?, last_error=? WHERE jobs.id = ?
+2026-01-12 19:10:35,695 INFO sqlalchemy.engine.Engine [generated in 0.00015s] ('failed', 'Update ReadFrom failed: context canceled', 1)
+2026-01-12 19:10:35,696 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-12 19:10:35,713 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:35,714 INFO sqlalchemy.engine.Engine INSERT INTO job_history (job_id, status, details, timestamp, avg_speed, files_transferred, job_snapshot, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-01-12 19:10:35,714 INFO sqlalchemy.engine.Engine [generated in 0.00022s] (1, 'failed', '{"duration": 124.516831101, "endTime": "2026-01-12T19:10:35.411374214Z", "error": "Update ReadFrom failed: context canceled", "executeId": "f97295c0- ... (4 characters truncated) ... -4025-a7e8-801d5310f87c", "finished": true, "group": "job/8", "id": 8, "output": {}, "startTime": "2026-01-12T19:08:41.801516279Z", "success": false}', '2026-01-12 19:10:35.714144', 10821678, '["vuetorrent.zip", "vuetorrent/version.txt", "temp/Fittest.in.Dubai.2019.1080p.AMZN.WEBRip.DDP5.1.x264-TEPES/Fittest.in.Dubai.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-TEPES.mkv"]', '{"name": "test", "operation": "copy", "source_remote_id": 1, "source_remote_name": "seedbox", "dest_remote_id": 2, "dest_remote_name": "nas", "source ... (232 characters truncated) ... t_runs": false, "max_concurrent_runs": 2, "use_checksum": false, "sequential_transfer": true, "preserve_metadata": false, "execution_type": "manual"}', '2026-01-12 19:08:41.821951', '2026-01-12 19:10:35.712347')
+2026-01-12 19:10:35,715 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-12 19:10:35,735 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:35,735 INFO sqlalchemy.engine.Engine SELECT system_settings.id, system_settings."key", system_settings.value 
+FROM system_settings 
+WHERE system_settings."key" = ?
+2026-01-12 19:10:35,736 INFO sqlalchemy.engine.Engine [cached since 1532s ago] ('max_history_entries',)
+2026-01-12 19:10:35,737 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:35,738 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:35,739 INFO sqlalchemy.engine.Engine SELECT count(job_history.id) AS count_1 
+FROM job_history
+2026-01-12 19:10:35,739 INFO sqlalchemy.engine.Engine [generated in 0.00016s] ()
+2026-01-12 19:10:35,741 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:35,742 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:35,743 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:10:35,743 INFO sqlalchemy.engine.Engine [cached since 146.5s ago] (1,)
+2026-01-12 19:10:35,744 INFO sqlalchemy.engine.Engine SELECT job_actions.id, job_actions.job_id, job_actions.action_id, job_actions."trigger", job_actions."order" 
+FROM job_actions 
+WHERE job_actions.job_id = ? AND job_actions."trigger" = ? ORDER BY job_actions."order"
+2026-01-12 19:10:35,744 INFO sqlalchemy.engine.Engine [cached since 136.3s ago] (1, 'post_always')
+2026-01-12 19:10:35,745 INFO sqlalchemy.engine.Engine SELECT job_actions.id, job_actions.job_id, job_actions.action_id, job_actions."trigger", job_actions."order" 
+FROM job_actions 
+WHERE job_actions.job_id = ? AND job_actions."trigger" = ? ORDER BY job_actions."order"
+2026-01-12 19:10:35,746 INFO sqlalchemy.engine.Engine [cached since 136.3s ago] (1, 'post_fail')
+2026-01-12 19:10:35,746 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:40,482 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:40,482 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:10:40,482 INFO sqlalchemy.engine.Engine [cached since 1534s ago] ()
+2026-01-12 19:10:40,484 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:43624 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:10:54,499 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:54,499 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:10:54,499 INFO sqlalchemy.engine.Engine [cached since 165.2s ago] (1,)
+2026-01-12 19:10:54,504 INFO sqlalchemy.engine.Engine INSERT INTO activity_log (action, entity_type, entity_id, details, timestamp) VALUES (?, ?, ?, ?, ?)
+2026-01-12 19:10:54,504 INFO sqlalchemy.engine.Engine [cached since 165.2s ago] ('patch', 'job', 1, '{"transfer_method": "proxy"}', '2026-01-12 19:10:54.504421')
+2026-01-12 19:10:54,505 INFO sqlalchemy.engine.Engine UPDATE jobs SET transfer_method=? WHERE jobs.id = ?
+2026-01-12 19:10:54,505 INFO sqlalchemy.engine.Engine [generated in 0.00013s] ('proxy', 1)
+2026-01-12 19:10:54,506 INFO sqlalchemy.engine.Engine COMMIT
+2026-01-12 19:10:54,523 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:54,523 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:10:54,523 INFO sqlalchemy.engine.Engine [cached since 170s ago] (1,)
+2026-01-12 19:10:54,525 INFO sqlalchemy.engine.Engine SELECT job_actions.job_id AS job_actions_job_id, job_actions.id AS job_actions_id, job_actions.action_id AS job_actions_action_id, job_actions."trigger" AS job_actions_trigger, job_actions."order" AS job_actions_order 
+FROM job_actions 
+WHERE job_actions.job_id IN (?)
+2026-01-12 19:10:54,525 INFO sqlalchemy.engine.Engine [cached since 209.1s ago] (1,)
+2026-01-12 19:10:54,526 INFO sqlalchemy.engine.Engine SELECT job_history.id, job_history.job_id, job_history.status, job_history.details, job_history.timestamp, job_history.avg_speed, job_history.files_transferred, job_history.job_snapshot, job_history.started_at, job_history.completed_at 
+FROM job_history 
+WHERE job_history.job_id = ? ORDER BY job_history.timestamp DESC
+ LIMIT ? OFFSET ?
+2026-01-12 19:10:54,526 INFO sqlalchemy.engine.Engine [cached since 170s ago] (1, 1, 0)
+INFO:     127.0.0.1:57604 - "PATCH /api/jobs/1 HTTP/1.1" 200 OK
+2026-01-12 19:10:54,528 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:55,022 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:55,023 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs LEFT OUTER JOIN (SELECT job_history.job_id AS job_id, max(job_history.id) AS max_id 
+FROM job_history GROUP BY job_history.job_id) AS anon_1 ON jobs.id = anon_1.job_id LEFT OUTER JOIN job_history AS job_history_1 ON job_history_1.id = anon_1.max_id
+2026-01-12 19:10:55,023 INFO sqlalchemy.engine.Engine [cached since 209.6s ago] ()
+2026-01-12 19:10:55,025 INFO sqlalchemy.engine.Engine SELECT job_actions.job_id AS job_actions_job_id, job_actions.id AS job_actions_id, job_actions.action_id AS job_actions_action_id, job_actions."trigger" AS job_actions_trigger, job_actions."order" AS job_actions_order 
+FROM job_actions 
+WHERE job_actions.job_id IN (?)
+2026-01-12 19:10:55,025 INFO sqlalchemy.engine.Engine [cached since 209.6s ago] (1,)
+2026-01-12 19:10:55,026 INFO sqlalchemy.engine.Engine SELECT job_history.id, job_history.job_id, job_history.status, job_history.details, job_history.timestamp, job_history.avg_speed, job_history.files_transferred, job_history.job_snapshot, job_history.started_at, job_history.completed_at 
+FROM job_history JOIN (SELECT job_history.job_id AS job_id, max(job_history.id) AS max_id 
+FROM job_history GROUP BY job_history.job_id) AS anon_1 ON job_history.id = anon_1.max_id
+2026-01-12 19:10:55,026 INFO sqlalchemy.engine.Engine [cached since 209.6s ago] ()
+INFO:     127.0.0.1:57606 - "GET /api/jobs/ HTTP/1.1" 200 OK
+2026-01-12 19:10:55,028 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine SELECT actions.id, actions.name, actions.type, actions.config 
+FROM actions
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine [cached since 172.4s ago] ()
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine SELECT schedule_templates.id, schedule_templates.name, schedule_templates.schedule_type, schedule_templates.config 
+FROM schedule_templates
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine [cached since 1552s ago] ()
+2026-01-12 19:10:56,963 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine SELECT remotes.id, remotes.name, remotes.type, remotes.credential_id, remotes.config, credentials_1.id AS id_1, credentials_1.name AS name_1, credentials_1.type AS type_1, credentials_1.data 
+FROM remotes LEFT OUTER JOIN credentials AS credentials_1 ON credentials_1.id = remotes.credential_id
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine [cached since 172.8s ago] ()
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine [cached since 172.4s ago] (1,)
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:56,964 INFO sqlalchemy.engine.Engine SELECT credentials.id, credentials.name, credentials.type, credentials.data 
+FROM credentials
+2026-01-12 19:10:56,965 INFO sqlalchemy.engine.Engine [cached since 172.4s ago] ()
+INFO:     127.0.0.1:57644 - "GET /api/actions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57630 - "GET /api/schedules/ HTTP/1.1" 200 OK
+2026-01-12 19:10:56,969 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:56,970 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:57640 - "GET /api/credentials HTTP/1.1" 200 OK
+2026-01-12 19:10:56,973 INFO sqlalchemy.engine.Engine SELECT job_actions.job_id AS job_actions_job_id, job_actions.id AS job_actions_id, job_actions.action_id AS job_actions_action_id, job_actions."trigger" AS job_actions_trigger, job_actions."order" AS job_actions_order 
+FROM job_actions 
+WHERE job_actions.job_id IN (?)
+2026-01-12 19:10:56,974 INFO sqlalchemy.engine.Engine [cached since 211.5s ago] (1,)
+INFO:     127.0.0.1:57620 - "GET /api/remotes HTTP/1.1" 200 OK
+2026-01-12 19:10:56,975 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:56,975 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:56,978 INFO sqlalchemy.engine.Engine SELECT job_history.id, job_history.job_id, job_history.status, job_history.details, job_history.timestamp, job_history.avg_speed, job_history.files_transferred, job_history.job_snapshot, job_history.started_at, job_history.completed_at 
+FROM job_history 
+WHERE job_history.job_id = ? ORDER BY job_history.timestamp DESC
+ LIMIT ? OFFSET ?
+2026-01-12 19:10:56,978 INFO sqlalchemy.engine.Engine [cached since 172.4s ago] (1, 1, 0)
+INFO:     127.0.0.1:57624 - "GET /api/jobs/1 HTTP/1.1" 200 OK
+2026-01-12 19:10:56,981 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:10:58,785 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:58,786 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs LEFT OUTER JOIN (SELECT job_history.job_id AS job_id, max(job_history.id) AS max_id 
+FROM job_history GROUP BY job_history.job_id) AS anon_1 ON jobs.id = anon_1.job_id LEFT OUTER JOIN job_history AS job_history_1 ON job_history_1.id = anon_1.max_id
+2026-01-12 19:10:58,786 INFO sqlalchemy.engine.Engine [cached since 213.3s ago] ()
+2026-01-12 19:10:58,787 INFO sqlalchemy.engine.Engine SELECT job_actions.job_id AS job_actions_job_id, job_actions.id AS job_actions_id, job_actions.action_id AS job_actions_action_id, job_actions."trigger" AS job_actions_trigger, job_actions."order" AS job_actions_order 
+FROM job_actions 
+WHERE job_actions.job_id IN (?)
+2026-01-12 19:10:58,787 INFO sqlalchemy.engine.Engine [cached since 213.3s ago] (1,)
+2026-01-12 19:10:58,789 INFO sqlalchemy.engine.Engine SELECT job_history.id, job_history.job_id, job_history.status, job_history.details, job_history.timestamp, job_history.avg_speed, job_history.files_transferred, job_history.job_snapshot, job_history.started_at, job_history.completed_at 
+FROM job_history JOIN (SELECT job_history.job_id AS job_id, max(job_history.id) AS max_id 
+FROM job_history GROUP BY job_history.job_id) AS anon_1 ON job_history.id = anon_1.max_id
+2026-01-12 19:10:58,789 INFO sqlalchemy.engine.Engine [cached since 213.3s ago] ()
+INFO:     127.0.0.1:57652 - "GET /api/jobs/ HTTP/1.1" 200 OK
+2026-01-12 19:10:58,790 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:57666 - "GET /api/events HTTP/1.1" 200 OK
+2026-01-12 19:10:59,132 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:10:59,132 INFO sqlalchemy.engine.Engine SELECT schedule_templates.id, schedule_templates.name, schedule_templates.schedule_type, schedule_templates.config 
+FROM schedule_templates
+2026-01-12 19:10:59,132 INFO sqlalchemy.engine.Engine [cached since 1555s ago] ()
+INFO:     127.0.0.1:57678 - "GET /api/schedules/ HTTP/1.1" 200 OK
+2026-01-12 19:10:59,133 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:11:05,100 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:11:05,100 INFO sqlalchemy.engine.Engine SELECT jobs.id, jobs.name, jobs.source_remote_id, jobs.dest_remote_id, jobs.operation, jobs.schedule, jobs.source_path, jobs.dest_path, jobs.excludes, jobs.transfer_method, jobs.copy_mode, jobs.enabled, jobs.last_run, jobs.next_run, jobs.last_status, jobs.last_error, jobs.allow_concurrent_runs, jobs.max_concurrent_runs, jobs.use_checksum, jobs.sequential_transfer, jobs.preserve_metadata, jobs.embed_key 
+FROM jobs 
+WHERE jobs.id = ?
+2026-01-12 19:11:05,100 INFO sqlalchemy.engine.Engine [cached since 178.5s ago] (1,)
+2026-01-12 19:11:05,102 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:11:05,102 INFO sqlalchemy.engine.Engine SELECT system_settings.id, system_settings."key", system_settings.value 
+FROM system_settings 
+WHERE system_settings."key" = ?
+2026-01-12 19:11:05,102 INFO sqlalchemy.engine.Engine [cached since 1564s ago] ('failure_cooldown_seconds',)
+2026-01-12 19:11:05,103 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:11:05,104 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-01-12 19:11:05,106 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:11:05,106 INFO sqlalchemy.engine.Engine INSERT INTO activity_log (action, entity_type, entity_id, details, timestamp) VALUES (?, ?, ?, ?, ?)
+2026-01-12 19:11:05,106 INFO sqlalchemy.engine.Engine [cached since 178.5s ago] ('run', 'job', 1, '{"execution_type": "manual"}', '2026-01-12 19:11:05.106321')
+2026-01-12 19:11:05,107 INFO sqlalchemy.engine.Engine COMMIT
+INFO:     127.0.0.1:36684 - "POST /api/jobs/1/run?execution_type=manual HTTP/1.1" 200 OK
+2026-01-12 19:11:07,811 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:11:07,811 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:11:07,811 INFO sqlalchemy.engine.Engine [cached since 1564s ago] ()
+2026-01-12 19:11:07,812 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:36698 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:11:35,143 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:11:35,144 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:11:35,144 INFO sqlalchemy.engine.Engine [cached since 1594s ago] ()
+2026-01-12 19:11:35,145 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:56506 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:12:02,460 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:12:02,460 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:12:02,460 INFO sqlalchemy.engine.Engine [cached since 1624s ago] ()
+2026-01-12 19:12:02,461 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:49004 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:12:29,806 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:12:29,806 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:12:29,806 INFO sqlalchemy.engine.Engine [cached since 1654s ago] ()
+2026-01-12 19:12:29,807 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:50272 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:12:57,135 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:12:57,136 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:12:57,136 INFO sqlalchemy.engine.Engine [cached since 1684s ago] ()
+2026-01-12 19:12:57,137 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:36294 - "GET /api/auth/status HTTP/1.1" 200 OK
+2026-01-12 19:13:24,475 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-12 19:13:24,476 INFO sqlalchemy.engine.Engine SELECT admin_user.id, admin_user.username, admin_user.password_hash, admin_user.created_at 
+FROM admin_user
+2026-01-12 19:13:24,476 INFO sqlalchemy.engine.Engine [cached since 1714s ago] ()
+2026-01-12 19:13:24,477 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:59422 - "GET /api/auth/status HTTP/1.1" 200 OK

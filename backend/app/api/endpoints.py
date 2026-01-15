@@ -13,6 +13,14 @@ from ..list_params import apply_list_params
 
 from ..scheduler import scheduler, get_job_next_run, add_scheduler_job, remove_scheduler_job
 from ..auth import get_current_user
+from ..schemas import (
+    CredentialCreate, CredentialRead,
+    RemoteCreate, RemoteRead,
+    BrowseRequest, BrowseSessionStartRequest, BrowseSessionResponse,
+    ActionCreate, ActionUpdate, ActionRead,
+    JobActionCreate, JobActionRead,
+    JobCreate, JobUpdate, JobRead
+)
 
 async def verify_api_key(x_api_key: Optional[str] = Header(None)):
     # If no key provided, maybe allow internal traffic? 
@@ -36,34 +44,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 # Public router for unauthenticated routes (auth, embed widgets public view)
 public_router = APIRouter()
 
-# Pydantic Models
-class CredentialCreate(BaseModel):
-    name: str
-    type: str
-    data: dict
-
-class CredentialRead(BaseModel):
-    id: int
-    name: str
-    type: str
-    data: dict
-    class Config:
-        from_attributes = True
-
-class RemoteCreate(BaseModel):
-    name: str
-    type: str
-    credential_id: Optional[int] = None
-    config: dict
-
-class RemoteRead(BaseModel):
-    id: int
-    name: str
-    type: str
-    credential_id: Optional[int] = None
-    config: dict
-    class Config:
-        orm_mode = True
+# Pydantic Models are now imported from ..schemas
 
 # --- Credentials ---
 @router.post("/credentials", response_model=CredentialRead)
@@ -258,17 +239,7 @@ async def test_remote_by_id(remote_id: int, db: AsyncSession = Depends(get_db)):
         return {"success": False, "error": str(e)}
 
 # --- Browsing ---
-class BrowseRequest(BaseModel):
-    path: str = ""
-    session_id: Optional[str] = None  # Optional session for connection pooling
-
-class BrowseSessionStartRequest(BaseModel):
-    remote_id: int
-
-class BrowseSessionResponse(BaseModel):
-    session_id: str
-    remote_id: int
-    remote_type: str
+# Browse models are now imported from ..schemas
 
 @router.post("/browse/start", response_model=BrowseSessionResponse)
 async def start_browse_session(payload: BrowseSessionStartRequest, db: AsyncSession = Depends(get_db)):
@@ -376,23 +347,7 @@ async def browse_remote(remote_id: int, payload: BrowseRequest, db: AsyncSession
          raise HTTPException(status_code=500, detail=str(e))
 
 # --- Actions ---
-class ActionCreate(BaseModel):
-    name: str
-    type: str 
-    config: dict
-
-class ActionUpdate(BaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    config: Optional[dict] = None
-
-class ActionRead(BaseModel):
-    id: int
-    name: str
-    type: str
-    config: dict
-    class Config:
-        from_attributes = True
+# Action models are now imported from ..schemas
 
 @router.post("/actions/", response_model=ActionRead)
 async def create_action(action: ActionCreate, db: AsyncSession = Depends(get_db)):
@@ -468,75 +423,7 @@ async def delete_action(action_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 # --- Jobs ---
-class JobActionCreate(BaseModel):
-    action_id: int
-    trigger: str 
-    order: Optional[int] = 0
-
-class JobActionRead(BaseModel):
-    id: int
-    action_id: int
-    trigger: str
-    order: int
-    action: ActionRead # Include nested action details
-    class Config:
-        from_attributes = True
-
-class JobCreate(BaseModel):
-    name: str
-    source_remote_id: int
-    dest_remote_id: int
-    operation: str
-    schedule: Optional[str] = None
-    source_path: Optional[str] = None
-    dest_path: Optional[str] = None
-    excludes: Optional[List[str]] = None
-    transfer_method: Optional[str] = 'direct'
-    copy_mode: Optional[str] = 'folder'
-    allow_concurrent_runs: Optional[bool] = False
-    max_concurrent_runs: Optional[int] = 1
-    use_checksum: Optional[bool] = False
-    actions: Optional[List[JobActionCreate]] = []
-
-class JobUpdate(BaseModel):
-    name: Optional[str] = None
-    operation: Optional[str] = None
-    schedule: Optional[str] = None
-    enabled: Optional[bool] = None
-    transfer_method: Optional[str] = None
-    copy_mode: Optional[str] = None
-    source_path: Optional[str] = None
-    dest_path: Optional[str] = None
-    excludes: Optional[List[str]] = None
-    allow_concurrent_runs: Optional[bool] = None
-    max_concurrent_runs: Optional[int] = None
-    use_checksum: Optional[bool] = None
-    actions: Optional[List[JobActionCreate]] = None
-
-class JobRead(BaseModel):
-    id: int
-    name: str
-    source_remote_id: int
-    dest_remote_id: int
-    operation: str
-    schedule: Optional[str] = None
-    source_path: Optional[str] = None
-    dest_path: Optional[str] = None
-    excludes: Optional[List[str]] = None
-    embed_key: Optional[str] = None
-    transfer_method: Optional[str] = 'direct'
-    copy_mode: Optional[str] = 'folder'
-    enabled: Optional[bool] = True
-    last_run: Optional[datetime] = None
-    next_run: Optional[datetime] = None
-    last_status: Optional[str] = "idle"
-    last_error: Optional[str] = None
-    allow_concurrent_runs: Optional[bool] = False
-    max_concurrent_runs: Optional[int] = 1
-    use_checksum: Optional[bool] = False
-    actions: List[JobActionRead] = []
-    class Config:
-        from_attributes = True
+# Job models are now imported from ..schemas
 
 @router.post("/jobs/", response_model=JobRead)
 async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db)):
@@ -552,7 +439,10 @@ async def create_job(job: JobCreate, db: AsyncSession = Depends(get_db)):
         transfer_method=job.transfer_method,
         copy_mode=job.copy_mode,
         allow_concurrent_runs=job.allow_concurrent_runs,
-        max_concurrent_runs=job.max_concurrent_runs
+        max_concurrent_runs=job.max_concurrent_runs,
+        use_checksum=job.use_checksum,
+        sequential_transfer=job.sequential_transfer,
+        preserve_metadata=job.preserve_metadata
     )
 
     db.add(db_job)
@@ -675,6 +565,8 @@ async def list_jobs(
             "allow_concurrent_runs": job.allow_concurrent_runs,
             "max_concurrent_runs": job.max_concurrent_runs,
             "use_checksum": job.use_checksum,
+            "sequential_transfer": job.sequential_transfer,
+            "preserve_metadata": job.preserve_metadata,
             "actions": job.actions # Actions are loaded via selectinload
         }
         jobs_with_status.append(j_dict)
@@ -714,6 +606,8 @@ async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
         "allow_concurrent_runs": job.allow_concurrent_runs,
         "max_concurrent_runs": job.max_concurrent_runs,
         "use_checksum": job.use_checksum,
+        "sequential_transfer": job.sequential_transfer,
+        "preserve_metadata": job.preserve_metadata,
         "actions": job.actions # Actions are loaded via selectinload
     }
     return j_dict
@@ -783,6 +677,8 @@ async def patch_job(job_id: int, job_update: JobUpdate, db: AsyncSession = Depen
         allow_concurrent_runs=db_job_loaded.allow_concurrent_runs,
         max_concurrent_runs=db_job_loaded.max_concurrent_runs,
         use_checksum=db_job_loaded.use_checksum,
+        sequential_transfer=db_job_loaded.sequential_transfer,
+        preserve_metadata=db_job_loaded.preserve_metadata,
         actions=db_job_loaded.actions
     )
 
@@ -1764,7 +1660,8 @@ async def create_widget(widget: EmbedWidgetCreate, db: AsyncSession = Depends(ge
                 "borderColor": "#374151",
                 "borderWidth": 1,
                 "fontSize": 14,
-                "theme": "dark"
+                "theme": "dark",
+                "idleBehavior": "keep"
             },
             "layout": "vertical"
         }

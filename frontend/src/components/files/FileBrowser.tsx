@@ -23,6 +23,7 @@ interface FileBrowserProps {
     onSelectPath: (path: string, copyMode: CopyMode) => void
     onAddExclude?: (pattern: string) => void
     label?: string
+    showCopyMode?: boolean
 }
 
 export function FileBrowser({
@@ -30,7 +31,8 @@ export function FileBrowser({
     initialPath = "",
     onSelectPath,
     onAddExclude,
-    label = "Path"
+    label = "Path",
+    showCopyMode = true
 }: FileBrowserProps) {
     const [path, setPath] = useState(initialPath)
     const [items, setItems] = useState<FileItem[]>([])
@@ -229,31 +231,33 @@ export function FileBrowser({
             </ScrollArea>
 
             {/* Copy Mode Toggle */}
-            <div className="px-2 py-1 border-t border-border/50 shrink-0 bg-zinc-800/30">
-                <div className="flex gap-px p-px bg-zinc-900 rounded">
-                    <button
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'folder' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
-                            }`}
-                        onClick={() => setCopyMode('folder')}
-                    >
-                        <FolderOpen className="h-3 w-3" />
-                        Folder
-                    </button>
-                    <button
-                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'contents' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
-                            }`}
-                        onClick={() => setCopyMode('contents')}
-                    >
-                        <FileStack className="h-3 w-3" />
-                        Contents
-                    </button>
+            {showCopyMode && (
+                <div className="px-2 py-1 border-t border-border/50 shrink-0 bg-zinc-800/30">
+                    <div className="flex gap-px p-px bg-zinc-900 rounded">
+                        <button
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'folder' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
+                                }`}
+                            onClick={() => setCopyMode('folder')}
+                        >
+                            <FolderOpen className="h-3 w-3" />
+                            Folder
+                        </button>
+                        <button
+                            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] ${copyMode === 'contents' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-white'
+                                }`}
+                            onClick={() => setCopyMode('contents')}
+                        >
+                            <FileStack className="h-3 w-3" />
+                            Contents
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Selected Path */}
             <div className="px-2 py-1 border-t border-border/50 bg-zinc-800/50 shrink-0">
                 <div className="text-[10px] text-muted-foreground truncate font-mono">
-                    {copyMode === 'folder' ? `/${path || ''}` : `contents of /${path || ''}`}
+                    {showCopyMode ? (copyMode === 'folder' ? `/${path || ''}` : `contents of /${path || ''}`) : `/${path || ''}`}
                 </div>
             </div>
 

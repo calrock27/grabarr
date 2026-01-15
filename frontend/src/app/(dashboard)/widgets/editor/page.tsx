@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, type EmbedWidget, type WidgetConfig, type Job } from "@/lib/api"
 import { toast } from "sonner"
-import { ArrowLeft, Save, Copy, RotateCw, Eye, GripVertical } from "lucide-react"
+import { ArrowLeft, Save, Copy, RotateCw, Eye, GripVertical, Clock } from "lucide-react"
 import Link from "next/link"
 import {
     DndContext,
@@ -65,8 +65,8 @@ const FIELD_LABELS: Record<string, string> = {
     progressBar: "Progress Bar",
     speed: "Transfer Speed",
     bytesTransferred: "Bytes Transferred",
-    eta: "Estimated Time",
-    filesTransferred: "Files Transferred",
+    eta: "Time Remaining",
+    filesTransferred: "File Counter",
     currentFile: "Current File",
     operationType: "Operation Type",
     lastRunTime: "Last Run Time"
@@ -264,7 +264,9 @@ function WidgetEditorContent() {
         const { active, over } = event
 
         if (over && active.id !== over.id) {
+            // Sort by .order property, not object insertion order
             const fieldKeys = Object.keys(config.fields)
+                .sort((a, b) => config.fields[a as keyof typeof config.fields].order - config.fields[b as keyof typeof config.fields].order)
             const oldIndex = fieldKeys.indexOf(active.id as string)
             const newIndex = fieldKeys.indexOf(over.id as string)
 
@@ -428,7 +430,7 @@ function WidgetEditorContent() {
                                 ref={previewRef}
                             >
                                 <div className="p-3 border-b flex justify-between items-center" style={{ borderColor: config.style.borderColor }}>
-                                    <span className="font-medium truncate">{job?.name || "Job Name"}</span>
+                                    <span className="font-medium truncate">{name || "Widget Name"}</span>
                                     {config.fields.statusIndicator.enabled && (
                                         <span
                                             className={`h-2 w-2 rounded-full ${isMockRunning ? 'animate-pulse' : ''}`}
@@ -436,84 +438,97 @@ function WidgetEditorContent() {
                                         />
                                     )}
                                 </div>
-                                <div className="p-3 flex-1 space-y-2 overflow-y-auto">
+                                <div className="p-3 flex-1 flex flex-col space-y-3 overflow-y-auto">
                                     {!isMockRunning && config.style.idleBehavior === 'minimal' ? (
-                                        <div className="space-y-2 flex flex-col items-center justify-center h-full opacity-60">
-                                            <span className="text-xs uppercase tracking-wider font-semibold">Idle</span>
+                                        <div className="flex-1 flex flex-col items-center justify-center opacity-60 space-y-2">
+                                            <span className="uppercase tracking-wider font-semibold" style={{ fontSize: '0.75em' }}>Idle</span>
                                             {config.fields.lastRunTime?.enabled && (
-                                                <div className="text-[10px]" style={{ color: config.style.secondaryTextColor }}>
-                                                    Last run: Jan 5, 2026 11:30 AM
+                                                <div className="flex items-center gap-1" style={{ color: config.style.secondaryTextColor, fontSize: '0.65em' }}>
+                                                    <Clock className="h-3 w-3" />
+                                                    Jan 5, 2026 11:30 AM
                                                 </div>
                                             )}
                                         </div>
                                     ) : (
-                                        enabledFields.map((fieldKey) => {
-                                            if (fieldKey === 'operationType') {
-                                                return (
-                                                    <div key={fieldKey} className="text-xs" style={{ color: config.style.secondaryTextColor }}>
-                                                        {job?.operation?.toUpperCase() || "SYNC"}
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'progressBar') {
-                                                return (
-                                                    <div key={fieldKey} className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: config.style.borderColor }}>
-                                                        <div
-                                                            className="h-full w-1/2 transition-all"
-                                                            style={{ backgroundColor: config.style.accentColor }}
-                                                        />
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'speed') {
-                                                return (
-                                                    <div key={fieldKey} className="flex justify-between text-xs" style={{ color: config.style.secondaryTextColor }}>
-                                                        <span>Speed</span>
-                                                        <span style={{ color: config.style.accentColor }}>12.5 MB/s</span>
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'bytesTransferred') {
-                                                return (
-                                                    <div key={fieldKey} className="flex justify-between text-xs" style={{ color: config.style.secondaryTextColor }}>
-                                                        <span>Transferred</span>
-                                                        <span>1.2 GB</span>
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'filesTransferred') {
-                                                return (
-                                                    <div key={fieldKey} className="flex justify-between text-xs" style={{ color: config.style.secondaryTextColor }}>
-                                                        <span>Files</span>
-                                                        <span>42 / 100</span>
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'eta') {
-                                                return (
-                                                    <div key={fieldKey} className="flex justify-between text-xs" style={{ color: config.style.secondaryTextColor }}>
-                                                        <span>ETA</span>
-                                                        <span>~5 min</span>
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'currentFile') {
-                                                return (
-                                                    <div key={fieldKey} className="text-xs truncate pt-1 opacity-80" style={{ color: config.style.secondaryTextColor }}>
-                                                        sample-data-transfer.zip
-                                                    </div>
-                                                )
-                                            }
-                                            if (fieldKey === 'lastRunTime') {
-                                                return (
-                                                    <div key={fieldKey} className="flex justify-between text-xs italic" style={{ color: config.style.secondaryTextColor }}>
-                                                        <span>Last Run</span>
-                                                        <span>Jan 5, 12:00 PM</span>
-                                                    </div>
-                                                )
-                                            }
-                                            return null
-                                        })
+                                        <>
+                                            {enabledFields.map((fieldKey) => {
+                                                if (fieldKey === 'operationType') {
+                                                    return (
+                                                        <div key={fieldKey} style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            {job?.operation?.toUpperCase() || "SYNC"}
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'progressBar') {
+                                                    return (
+                                                        <div key={fieldKey} className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: config.style.borderColor }}>
+                                                            <div
+                                                                className="h-full w-1/2 transition-all"
+                                                                style={{ backgroundColor: config.style.accentColor }}
+                                                            />
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'speed') {
+                                                    return (
+                                                        <div key={fieldKey} className="flex justify-between" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            <span>Speed</span>
+                                                            <span style={{ color: config.style.accentColor }}>12.5 MB/s</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'bytesTransferred') {
+                                                    return (
+                                                        <div key={fieldKey} className="flex justify-between" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            <span>Transferred</span>
+                                                            <span>1.2 GB</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'filesTransferred') {
+                                                    return (
+                                                        <div key={fieldKey} className="flex justify-between" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            <span>File Counter</span>
+                                                            <span>42 / 100</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'eta') {
+                                                    return (
+                                                        <div key={fieldKey} className="flex justify-between" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            <span>Time Remaining</span>
+                                                            <span>~5 min</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'currentFile') {
+                                                    return (
+                                                        <div key={fieldKey} className="truncate" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            sample-data-transfer.zip
+                                                        </div>
+                                                    )
+                                                }
+                                                if (fieldKey === 'lastRunTime') {
+                                                    return (
+                                                        <div key={fieldKey} className="flex justify-between italic" style={{ color: config.style.secondaryTextColor, fontSize: '0.75em' }}>
+                                                            <span>Last Run</span>
+                                                            <span>Jan 5, 12:00 PM</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                return null
+                                            })}
+
+                                            {!isMockRunning && config.style.idleBehavior !== 'minimal' && (
+                                                <div
+                                                    className="text-center py-3 flex flex-col items-center"
+                                                    style={{ color: config.style.secondaryTextColor }}
+                                                >
+                                                    <Clock className="w-6 h-6 mb-1 opacity-30" />
+                                                    <span style={{ fontSize: '0.75em' }}>Idle / Waiting</span>
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -530,24 +545,22 @@ function WidgetEditorContent() {
                         <CardTitle className="text-base">Configuration</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {isNewWidget && (
-                            <div className="space-y-2">
-                                <Label>Job <span className="text-red-400">*</span></Label>
-                                <select
-                                    value={job?.id || ""}
-                                    onChange={(e) => {
-                                        const selectedJob = jobs.find(j => j.id === parseInt(e.target.value))
-                                        setJob(selectedJob || null)
-                                    }}
-                                    className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
-                                >
-                                    <option value="">Select a job...</option>
-                                    {jobs.map(j => (
-                                        <option key={j.id} value={j.id}>{j.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                        <div className="space-y-2">
+                            <Label>Job <span className="text-red-400">*</span></Label>
+                            <select
+                                value={job?.id || ""}
+                                onChange={(e) => {
+                                    const selectedJob = jobs.find(j => j.id === parseInt(e.target.value))
+                                    setJob(selectedJob || null)
+                                }}
+                                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+                            >
+                                <option value="">Select a job...</option>
+                                {jobs.map(j => (
+                                    <option key={j.id} value={j.id}>{j.name}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="space-y-2">
                             <Label>Widget Name</Label>
                             <Input
@@ -655,15 +668,14 @@ function WidgetEditorContent() {
 
                         <div className="space-y-2 pt-2 border-t border-zinc-800">
                             <Label>Idle Behavior</Label>
-                            <div className="flex items-center justify-between bg-zinc-900/50 p-2 rounded-md">
-                                <span className="text-xs text-zinc-400">
-                                    {config.style.idleBehavior === 'minimal' ? 'Minimal Info' : 'Show Last Stats'}
-                                </span>
-                                <Switch
-                                    checked={config.style.idleBehavior === 'minimal'}
-                                    onCheckedChange={(val) => updateStyle('idleBehavior', val ? 'minimal' : 'keep')}
-                                />
-                            </div>
+                            <select
+                                value={config.style.idleBehavior || 'keep'}
+                                onChange={(e) => updateStyle('idleBehavior', e.target.value)}
+                                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm"
+                            >
+                                <option value="keep">Show Last Stats</option>
+                                <option value="minimal">Minimal (Idle only)</option>
+                            </select>
                             <p className="text-[10px] text-zinc-500">
                                 "Minimal" shows only Name, Status, and Last Run Time when idle.
                             </p>

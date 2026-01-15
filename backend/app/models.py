@@ -52,6 +52,10 @@ class Job(Base):
     # Verification settings
     use_checksum = Column(Boolean, default=False)  # Use hash comparison instead of mtime+size
     
+    # Transfer mode settings
+    sequential_transfer = Column(Boolean, default=False)  # Transfer files one at a time (Transfers=1, Checkers=1)
+    preserve_metadata = Column(Boolean, default=False)  # Preserve file permissions and metadata
+    
     embed_key = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     
     source = relationship("Remote", foreign_keys=[source_remote_id])

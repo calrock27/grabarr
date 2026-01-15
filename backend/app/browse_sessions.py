@@ -39,9 +39,9 @@ class BrowseSession:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_accessed: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
-    # SSH connection (for SFTP)
+    # SSH connection (for SSH+LS browsing - no SFTP to avoid rate limits)
     ssh_conn: Any = None
-    sftp_client: Any = None
+    sftp_client: Any = None  # Kept for backwards compat, but not used
     
     # Rclone fallback info
     rclone_remote_name: Optional[str] = None
@@ -161,30 +161,47 @@ class BrowseSessionManager:
         remote_config: dict, 
         credential_data: dict
     ):
-        """Establish SSH connection for SFTP browsing."""
+        """
+        Establish SSH connection for browsing using standard ls commands.
+        
+        Uses pure SSH (not SFTP subsystem) to avoid rate limiting on targets
+        that may restrict SFTP connections separately.
+        """
         host = remote_config.get("host", "")
         port = int(remote_config.get("port", 22))
         
         user = credential_data.get("user") or credential_data.get("username", "")
         password = credential_data.get("password", "")
+        private_key = credential_data.get("private_key", "")
+        passphrase = credential_data.get("passphrase", "")
         
-        # Connect with SSH
-        conn = await asyncssh.connect(
-            host=host,
-            port=port,
-            username=user,
-            password=password,
-            known_hosts=None,  # Accept all host keys (for self-hosted servers)
-            keepalive_interval=30,  # Keep connection alive
-            keepalive_count_max=5
-        )
+        # Build connection kwargs
+        conn_kwargs = {
+            "host": host,
+            "port": port,
+            "username": user,
+            "known_hosts": None,  # Accept all host keys (for self-hosted servers)
+            "keepalive_interval": 30,  # Keep connection alive
+            "keepalive_count_max": 5
+        }
         
-        # Open SFTP session
-        sftp = await conn.start_sftp_client()
+        # Prefer SSH key over password if available
+        if private_key:
+            # Import the key from string
+            if passphrase:
+                key = asyncssh.import_private_key(private_key, passphrase)
+            else:
+                key = asyncssh.import_private_key(private_key)
+            conn_kwargs["client_keys"] = [key]
+        elif password:
+            conn_kwargs["password"] = password
+        
+        # Connect with SSH - DO NOT open SFTP subsystem
+        conn = await asyncssh.connect(**conn_kwargs)
         
         session.ssh_conn = conn
-        session.sftp_client = sftp
-        logger.info(f"SSH connection established to {host}:{port}")
+        # Note: sftp_client is intentionally NOT opened to avoid rate limiting
+        logger.info(f"SSH connection established to {host}:{port} (using ls commands, not SFTP)")
     
     async def _setup_rclone_fallback(
         self,
@@ -298,9 +315,9 @@ class BrowseSessionManager:
         else:
             full_path = f"/{path.lstrip('/')}" if path else "/"
         
-        # Use SSH/SFTP if available
-        if session.sftp_client:
-            return await self._browse_sftp(session, full_path)
+        # Use SSH+LS if available (preferred - avoids SFTP rate limits)
+        if session.ssh_conn:
+            return await self._browse_ssh_ls(session, full_path)
         
         # Use local filesystem
         if session.remote_type == "local":
@@ -309,8 +326,111 @@ class BrowseSessionManager:
         # Fall back to rclone
         return await self._browse_rclone(session, path)
     
+    async def _browse_ssh_ls(self, session: BrowseSession, path: str) -> List[dict]:
+        """
+        Browse directory using SSH ls command.
+        
+        Uses standard POSIX ls command over the SSH connection instead of SFTP
+        to avoid SFTP-specific rate limiting on some servers.
+        """
+        try:
+            # Use ls -la for detailed listing
+            # -l = long format, -a = show hidden files (for consistency with SFTP)
+            result = await session.ssh_conn.run(f'ls -la "{path}"', check=True)
+            
+            items = self._parse_ls_output(result.stdout, path)
+            logger.debug(f"SSH ls browse {path}: {len(items)} items")
+            return items
+            
+        except asyncssh.ProcessError as e:
+            # Command failed (e.g., directory doesn't exist)
+            logger.error(f"SSH ls browse failed for {path}: {e.stderr}")
+            raise ValueError(f"Cannot browse {path}: {e.stderr}")
+        except Exception as e:
+            logger.error(f"SSH ls browse failed for {path}: {e}")
+            raise
+    
+    def _parse_ls_output(self, output: str, base_path: str) -> List[dict]:
+        """
+        Parse output from 'ls -la' command into file entries.
+        
+        Example ls -la output:
+        total 48
+        drwxr-xr-x  5 user group  4096 Jan 12 10:30 .
+        drwxr-xr-x 10 user group  4096 Jan 12 09:00 ..
+        -rw-r--r--  1 user group 12345 Jan 12 10:30 file.txt
+        drwxr-xr-x  2 user group  4096 Jan 12 10:30 subdir
+        lrwxrwxrwx  1 user group    11 Jan 12 10:30 link -> target
+        """
+        import re
+        
+        items = []
+        lines = output.strip().split('\n')
+        
+        for line in lines:
+            # Skip total line and . / .. entries
+            if line.startswith('total ') or line.endswith(' .') or line.endswith(' ..'):
+                continue
+            
+            # Parse ls -la output format:
+            # permissions links owner group size month day time/year name
+            # -rw-r--r-- 1 user group 12345 Jan 12 10:30 file.txt
+            match = re.match(
+                r'^([dlrwx\-sTSsX+@]+)\s+'  # permissions (includes special chars)
+                r'\d+\s+'                    # number of links
+                r'\S+\s+'                    # owner
+                r'\S+\s+'                    # group
+                r'(\d+)\s+'                  # size
+                r'(\w+\s+\d+\s+[\d:]+)\s+'   # date (Mon DD HH:MM or Mon DD YYYY)
+                r'(.+)$',                    # filename (may contain spaces)
+                line
+            )
+            
+            if not match:
+                continue
+            
+            perms, size_str, date_str, name = match.groups()
+            
+            # Skip . and .. entries (double check)
+            if name in ('.', '..'):
+                continue
+            
+            # Handle symlinks: "name -> target"
+            if ' -> ' in name:
+                name = name.split(' -> ')[0]
+            
+            is_dir = perms.startswith('d')
+            size = int(size_str) if size_str else 0
+            
+            # Parse date - try common formats
+            mod_time = ""
+            try:
+                # Try "Jan 12 10:30" format (current year)
+                parsed = datetime.strptime(date_str, "%b %d %H:%M")
+                parsed = parsed.replace(year=datetime.now().year, tzinfo=timezone.utc)
+                mod_time = parsed.isoformat()
+            except ValueError:
+                try:
+                    # Try "Jan 12 2024" format (different year)
+                    parsed = datetime.strptime(date_str, "%b %d %Y")
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                    mod_time = parsed.isoformat()
+                except ValueError:
+                    pass  # Leave empty if unparseable
+            
+            items.append({
+                "Path": f"{base_path.rstrip('/')}/{name}",
+                "Name": name,
+                "Size": size,
+                "ModTime": mod_time,
+                "IsDir": is_dir,
+                "MimeType": "inode/directory" if is_dir else ""
+            })
+        
+        return items
+    
     async def _browse_sftp(self, session: BrowseSession, path: str) -> List[dict]:
-        """Browse directory using SFTP."""
+        """Browse directory using SFTP (legacy, kept for compatibility)."""
         try:
             items = []
             async for entry in session.sftp_client.scandir(path):

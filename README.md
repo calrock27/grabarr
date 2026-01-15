@@ -86,11 +86,37 @@ Navigate to **Settings > System**.
 
 ## Environment Variables
 
+### User/Group IDs
+
+Like other self-hosted applications (Sonarr, Radarr, etc.), grabarr supports running as a specific user/group to ensure proper file ownership:
+
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+```
+
+Find your UID/GID by running `id` on your host:
+```bash
+$ id
+uid=1000(youruser) gid=1000(yourgroup) ...
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PUID` | `1000` | User ID to run as |
+| `PGID` | `1000` | Group ID to run as |
+| `UMASK` | *(not set)* | Optional file permission mask (e.g., `022`, `002`) |
+
+### Application Configuration
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GRABARR_DB_PATH` | `/config/grabarr.db` | Database file path |
 | `GRABARR_JWT_SECRET_PATH` | `/config/.jwt_secret` | JWT secret key path |
 | `GRABARR_KEY_PATH` | `/config/.grabarr_key` | Encryption key path |
 | `GRABARR_RCLONE_AUTH_PATH` | `/config/.rclone_auth` | Rclone auth path |
+| `GRABARR_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+| `GRABARR_RCLONE_TIMEOUT` | `60` | Rclone API timeout in seconds |
 | `GRABARR_DEV_MODE` | `false` | Enable hot-reload for development |
 | `PORT` | `3643` | Frontend port |

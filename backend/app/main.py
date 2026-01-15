@@ -5,6 +5,7 @@ from .rclone import rclone_manager
 from .scheduler import start_scheduler, shutdown_scheduler, sync_scheduler_jobs
 from .browse_sessions import browse_session_manager
 from .migrations import check_and_migrate
+from .schema_migrations import run_schema_migrations
 from .api.endpoints import router as api_router, public_router
 from .models import SystemSettings
 from sqlalchemy import select
@@ -93,6 +94,9 @@ async def startup():
     
     # Run credential encryption migration
     await check_and_migrate()
+    
+    # Run schema migrations (add missing columns)
+    await run_schema_migrations()
     
     # Update CORS origins from settings
     cors_settings = await get_cors_settings_from_db()

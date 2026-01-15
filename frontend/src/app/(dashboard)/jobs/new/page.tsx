@@ -25,6 +25,42 @@ import {
 import { Save, ArrowRight, ArrowLeft, CheckCircle, AlertCircle, Loader2, MoveRight, X, FileText, Folder, File, Zap, Settings2, Target, Clock } from "lucide-react"
 import { FileBrowser, type CopyMode } from "@/components/files/FileBrowser"
 import { ActionWorkflow } from "@/components/actions/ActionWorkflow"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
+type CompatibilityResult = {
+    compatible: boolean
+    reason?: string
+}
+
+function checkCompatibility(source?: Remote, dest?: Remote): CompatibilityResult {
+    if (!source || !dest) return { compatible: true }
+
+    // Case 1: Same remote (Direct is always possible within the same host/remote)
+    if (source.id === dest.id) return { compatible: true }
+
+    // Case 2: Both are local
+    if (source.type === 'local' && dest.type === 'local') return { compatible: true }
+
+    // Case 3: Same cloud provider (server-side copy support varies but generally possible between same-type clouds)
+    const cloudProviders = ['drive', 's3', 'dropbox', 'onedrive', 'b2', 'azureblob']
+    if (source.type === dest.type && cloudProviders.includes(source.type)) {
+        return { compatible: true }
+    }
+
+    // Specific case: Same type but not a cloud provider (e.g. two different SFTP servers)
+    if (source.type === dest.type) {
+        return {
+            compatible: false,
+            reason: `Direct transfer between two DIFFERENT ${source.type.toUpperCase()} targets is not supported by rclone. Proxy mode is required unless using the same target.`
+        }
+    }
+
+    // Default: Incompatible
+    return {
+        compatible: false,
+        reason: `Direct transfer between ${source.type.toUpperCase()} and ${dest.type.toUpperCase()} is not supported. Proxy mode is required.`
+    }
+}
 
 export default function NewJobPage() {
     return (
@@ -65,7 +101,6 @@ function NewJobPageContent() {
     const [sourcePath, setSourcePath] = useState("")
     const [destPath, setDestPath] = useState("")
     const [sourceCopyMode, setSourceCopyMode] = useState<CopyMode>('folder')
-    const [destCopyMode, setDestCopyMode] = useState<CopyMode>('folder')
     const [excludePatterns, setExcludePatterns] = useState<string[]>([])
 
     // Concurrency settings
@@ -75,6 +110,10 @@ function NewJobPageContent() {
     // Verification settings
     const [useChecksum, setUseChecksum] = useState(false)
 
+    // Transfer mode settings
+    const [sequentialTransfer, setSequentialTransfer] = useState(false)
+    const [preserveMetadata, setPreserveMetadata] = useState(false)
+
     // Actions (optional)
     const [jobActions, setJobActions] = useState<JobAction[]>([])
     const [showActionsPanel, setShowActionsPanel] = useState(false)
@@ -83,6 +122,21 @@ function NewJobPageContent() {
     const [showSummary, setShowSummary] = useState(false)
     const [summaryLoading, setSummaryLoading] = useState(false)
     const [summaryFiles, setSummaryFiles] = useState<any[]>([])
+
+    // Compatibility check
+    const sourceRemote = remotes.find(r => r.id.toString() === sourceId)
+    const destRemote = remotes.find(r => r.id.toString() === destId)
+    const compatibility = checkCompatibility(sourceRemote, destRemote)
+
+    useEffect(() => {
+        if (!compatibility.compatible && transferMethod !== 'proxy') {
+            setTransferMethod('proxy')
+        } else if (compatibility.compatible && transferMethod === 'proxy' && !editId) {
+            // Auto-switch back to direct ONLY if we are creating a new job
+            // If editing, we respect the saved setting but the alert will still hide
+            setTransferMethod('direct')
+        }
+    }, [compatibility.compatible, transferMethod, editId])
 
     useEffect(() => {
         api.getRemotes().then(setRemotes).catch(console.error)
@@ -107,6 +161,8 @@ function NewJobPageContent() {
                 setMaxConcurrentRuns(job.max_concurrent_runs || 1)
 
                 setUseChecksum(job.use_checksum || false)
+                setSequentialTransfer(job.sequential_transfer || false)
+                setPreserveMetadata(job.preserve_metadata || false)
                 setJobActions((job.actions || []).map((ja: JobAction) => ({
                     ...ja,
                     tempId: ja.tempId || ja.id?.toString() || crypto.randomUUID()
@@ -169,6 +225,8 @@ function NewJobPageContent() {
             allow_concurrent_runs: allowConcurrentRuns,
             max_concurrent_runs: maxConcurrentRuns,
             use_checksum: useChecksum,
+            sequential_transfer: sequentialTransfer,
+            preserve_metadata: preserveMetadata,
             actions: allActions
         }
         if (schedule) payload.schedule = schedule
@@ -213,9 +271,6 @@ function NewJobPageContent() {
 
     const nextStep = () => setStep(s => s + 1)
     const prevStep = () => setStep(s => s - 1)
-
-    const sourceRemote = remotes.find(r => r.id.toString() === sourceId)
-    const destRemote = remotes.find(r => r.id.toString() === destId)
 
     const getTransferSummary = () => ({
         from: `${sourceRemote?.name || 'Source'}:/${sourcePath || ''}`,
@@ -308,7 +363,11 @@ function NewJobPageContent() {
                                     </div>
                                     <div className="space-y-1.5">
                                         <Label className="text-xs">Transfer Method</Label>
-                                        <Select value={transferMethod} onValueChange={(v: 'direct' | 'proxy') => setTransferMethod(v)}>
+                                        <Select
+                                            value={transferMethod}
+                                            onValueChange={(v: 'direct' | 'proxy') => setTransferMethod(v)}
+                                            disabled={!compatibility.compatible}
+                                        >
                                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="direct">Direct</SelectItem>
@@ -317,6 +376,15 @@ function NewJobPageContent() {
                                         </Select>
                                     </div>
                                 </div>
+                                {!compatibility.compatible && (
+                                    <Alert className="bg-amber-900/20 border-amber-800/50 py-2">
+                                        <Zap className="h-4 w-4 text-amber-400" />
+                                        <AlertTitle className="text-amber-400 text-xs font-semibold">Proxy Mode Enforced</AlertTitle>
+                                        <AlertDescription className="text-amber-200/70 text-[10px]">
+                                            {compatibility.reason}
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                             </div>
 
                             {/* Section: Targets */}
@@ -468,6 +536,40 @@ function NewJobPageContent() {
                                             onCheckedChange={setUseChecksum}
                                         />
                                     </div>
+
+                                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/10">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="sequentialTransfer" className="text-xs font-medium cursor-pointer">
+                                                Sequential Transfer
+                                            </Label>
+                                            <p className="text-[10px] text-muted-foreground">
+                                                {sequentialTransfer ? "Transfer one file at a time" : "Transfer multiple files in parallel"}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="sequentialTransfer"
+                                            checked={sequentialTransfer}
+                                            onCheckedChange={setSequentialTransfer}
+                                        />
+                                    </div>
+
+                                    {/* Only show Preserve Permissions for POSIX-capable remotes */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/10">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="preserveMetadata" className="text-xs font-medium cursor-pointer">
+                                                Preserve Permissions
+                                            </Label>
+                                            <p className="text-[10px] text-muted-foreground">
+                                                {preserveMetadata ? "Preserve file metadata/permissions" : "Use default permissions"}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="preserveMetadata"
+                                            checked={preserveMetadata}
+                                            onCheckedChange={setPreserveMetadata}
+                                        />
+                                    </div>
+
                                 </div>
                             </div>
                         </div>
@@ -494,8 +596,9 @@ function NewJobPageContent() {
                                 <FileBrowser
                                     remoteId={parseInt(destId)}
                                     initialPath={destPath}
-                                    onSelectPath={(path, mode) => { setDestPath(path); setDestCopyMode(mode); }}
+                                    onSelectPath={(path) => { setDestPath(path); }}
                                     label="Destination"
+                                    showCopyMode={false}
                                 />
                             </div>
 
