@@ -289,6 +289,13 @@ class JobRunner:
             
             logger.info(f"Transferring from {src_fs} to {dst_fs} using {job.operation}")
             
+            # Default performance settings from global config
+            default_transfers = await self._get_system_setting('default_transfers', 16)
+            default_checkers = await self._get_system_setting('default_checkers', 32)
+            default_buffer_size = await self._get_system_setting('default_buffer_size', 128)
+            default_multi_thread_streams = await self._get_system_setting('default_multi_thread_streams', 16)
+            default_multi_thread_cutoff = await self._get_system_setting('default_multi_thread_cutoff', 10)
+
             # Map operation to rclone command
             # copy -> sync/copy, sync -> sync/sync, move -> sync/move
             cmd = f"sync/{job.operation}"
@@ -296,15 +303,19 @@ class JobRunner:
             params = {
                 "srcFs": src_fs,
                 "dstFs": dst_fs,
-                "_async": True # Run in background on rclone side
+                "_async": True, # Run in background on rclone side
+                "_config": {
+                    "Transfers": default_transfers,
+                    "Checkers": default_checkers,
+                    "BufferSize": f"{default_buffer_size}M",
+                    "MultiThreadStreams": default_multi_thread_streams,
+                    "MultiThreadCutoff": f"{default_multi_thread_cutoff}M"
+                }
             }
             
-            # Handle transfer method: proxy = disable server-side copy
+            # Handle transfer method: proxy = disable server-side copy (force data through client)
             if job.transfer_method == 'proxy':
-                params["_config"] = {
-                    "ServerSideAcrossConfigs": False,
-                    "DisableHTTP2": True
-                }
+                params["_config"]["ServerSideAcrossConfigs"] = False
             
             # Apply checksum verification mode
             if job.use_checksum:
@@ -691,7 +702,16 @@ class JobRunner:
             url = remote.config.get("url", "")
             if not url:
                 raise ValueError("HTTP remote requires a URL")
-            return f":http,url='{url}':"
+            
+            params = [f"url='{url}'"]
+            
+            # Default no_head to false to allow file size detection for multi-threading
+            # Only enable if explicitly set to 'true'
+            no_head = remote.config.get("no_head", "false")
+            if no_head == "true":
+                params.append("no_head='true'")
+                
+            return f":http,{','.join(params)}:"
         
         elif remote.type == "webdav":
             # WebDAV uses 'url' and optionally user/pass

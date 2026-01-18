@@ -12,7 +12,7 @@ services:
     volumes:
       - ./config:/config
     environment:
-      # User/Group ID - set these to match your host user (run 'id' to find values)
+      # User/Group ID - set thes e to match your host user (run 'id' to find values)
       - PUID=1000
       - PGID=1000
       # Optional: Set file permission mask (default: system default, common: 022, 002)

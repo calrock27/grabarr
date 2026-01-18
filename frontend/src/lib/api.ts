@@ -96,6 +96,12 @@ export interface SystemSettings {
     failure_cooldown_seconds: number
     max_history_entries: number
     timezone?: string  // 'auto' for browser detection, or IANA timezone like 'America/New_York'
+    // Performance settings
+    default_transfers?: number
+    default_checkers?: number
+    default_buffer_size?: number
+    default_multi_thread_streams?: number
+    default_multi_thread_cutoff?: number
 }
 
 export interface Schedule {

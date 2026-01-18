@@ -83,8 +83,10 @@ export function RemoteForm({ initialData, credentials, onSubmit, onCancel }: Rem
     const handleTypeChange = (val: string) => {
         setType(val)
         // Reset config to avoid leakage, but maybe keep some like 'path'? 
-        // Safer to reset.
-        if (val !== type) setConfig({})
+        // HTTP remotes: do NOT set no_head by default (allows file size detection for multi-threading)
+        if (val !== type) {
+            setConfig({})
+        }
     }
 
     const updateConfig = (key: string, val: string) => {
@@ -320,9 +322,23 @@ export function RemoteForm({ initialData, credentials, onSubmit, onCancel }: Rem
                 )}
 
                 {type === 'http' && (
-                    <div className="space-y-2">
-                        <Label>URL</Label>
-                        <Input value={config.url || ""} onChange={e => updateConfig("url", e.target.value)} placeholder="https://example.com/files/" className="bg-muted/50 border-gray-700" />
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>URL</Label>
+                            <Input value={config.url || ""} onChange={e => updateConfig("url", e.target.value)} placeholder="https://example.com/files/" className="bg-muted/50 border-gray-700" />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                id="no_head"
+                                checked={config.no_head === 'true'}
+                                onChange={e => updateConfig("no_head", e.target.checked ? 'true' : 'false')}
+                                className="h-4 w-4 rounded border-gray-700 bg-muted/50 text-blue-600 focus:ring-blue-500"
+                            />
+                            <Label htmlFor="no_head" className="font-normal text-sm cursor-pointer text-muted-foreground">
+                                Disable HEAD Requests (Check if listing fails)
+                            </Label>
+                        </div>
                     </div>
                 )}
             </div>

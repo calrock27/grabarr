@@ -25,7 +25,12 @@ export default function SystemSettingsPage() {
     const [settings, setSettings] = useState<SystemSettings>({
         failure_cooldown_seconds: 60,
         max_history_entries: 50,
-        timezone: "America/New_York"
+        timezone: "America/New_York",
+        default_transfers: 16,
+        default_checkers: 32,
+        default_buffer_size: 128,
+        default_multi_thread_streams: 16,
+        default_multi_thread_cutoff: 10
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -154,6 +159,18 @@ export default function SystemSettingsPage() {
         }
     }
 
+    function handleResetToOptimized() {
+        setSettings({
+            ...settings,
+            default_transfers: 16,
+            default_checkers: 32,
+            default_buffer_size: 128,
+            default_multi_thread_streams: 16,
+            default_multi_thread_cutoff: 10
+        })
+        toast.info("Settings reset to optimized values. Click 'Save' to apply.")
+    }
+
     if (loading) {
         return (
             <div className="p-6 text-white">
@@ -222,6 +239,142 @@ export default function SystemSettingsPage() {
                             >
                                 {saving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                                 Save Settings
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+                {/* Transfer Performance Settings */}
+                <Card className="bg-card border-primary/20 shadow-lg shadow-primary/5">
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <CardTitle className="text-white">Transfer Performance</CardTitle>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleResetToOptimized}
+                                className="text-xs h-8 border-primary/20 hover:bg-primary/10 text-primary"
+                            >
+                                <RefreshCw className="w-3 h-3 mr-1.5" />
+                                Reset to Optimized
+                            </Button>
+                        </div>
+                        <CardDescription>Configure rclone transfer parallelism and buffer settings for maximum speed.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-6">
+                            {/* Parallel Transfers */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label htmlFor="transfers" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                        Parallel Transfers
+                                    </Label>
+                                    <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.default_transfers || 16}</span>
+                                </div>
+                                <Input
+                                    id="transfers"
+                                    type="range"
+                                    min={1}
+                                    max={32}
+                                    step={1}
+                                    value={settings.default_transfers || 16}
+                                    onChange={(e) => setSettings({ ...settings, default_transfers: parseInt(e.target.value) })}
+                                    className="h-6 accent-primary"
+                                />
+                                <p className="text-[10px] text-zinc-500">Number of files to transfer simultaneously</p>
+                            </div>
+
+                            {/* Parallel Checkers */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label htmlFor="checkers" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                        Parallel Checkers
+                                    </Label>
+                                    <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.default_checkers || 32}</span>
+                                </div>
+                                <Input
+                                    id="checkers"
+                                    type="range"
+                                    min={1}
+                                    max={64}
+                                    step={1}
+                                    value={settings.default_checkers || 32}
+                                    onChange={(e) => setSettings({ ...settings, default_checkers: parseInt(e.target.value) })}
+                                    className="h-6 accent-primary"
+                                />
+                                <p className="text-[10px] text-zinc-500">Number of parallel checksum/mtime checks</p>
+                            </div>
+
+                            {/* Buffer Size */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label htmlFor="buffer" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                        Buffer Size (MB)
+                                    </Label>
+                                    <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.default_buffer_size || 128} MB</span>
+                                </div>
+                                <Input
+                                    id="buffer"
+                                    type="number"
+                                    min={16}
+                                    max={1024}
+                                    value={settings.default_buffer_size || 128}
+                                    onChange={(e) => setSettings({ ...settings, default_buffer_size: parseInt(e.target.value) || 16 })}
+                                    className="bg-zinc-900/50 border-zinc-700 text-white h-9"
+                                />
+                                <p className="text-[10px] text-zinc-500">In-memory buffer per file transfer</p>
+                            </div>
+
+                            {/* Multi-Thread Streams */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label htmlFor="streams" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                        Multi-Thread Streams
+                                    </Label>
+                                    <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.default_multi_thread_streams || 16}</span>
+                                </div>
+                                <Input
+                                    id="streams"
+                                    type="range"
+                                    min={1}
+                                    max={32}
+                                    step={1}
+                                    value={settings.default_multi_thread_streams || 16}
+                                    onChange={(e) => setSettings({ ...settings, default_multi_thread_streams: parseInt(e.target.value) })}
+                                    className="h-6 accent-primary"
+                                />
+                                <p className="text-[10px] text-zinc-500">Parallel streams per large file</p>
+                            </div>
+
+                            {/* Multi-Thread Cutoff */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label htmlFor="cutoff" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                        Multi-Thread Cutoff (MB)
+                                    </Label>
+                                    <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.default_multi_thread_cutoff || 10} MB</span>
+                                </div>
+                                <Input
+                                    id="cutoff"
+                                    type="number"
+                                    min={1}
+                                    max={2048}
+                                    value={settings.default_multi_thread_cutoff || 10}
+                                    onChange={(e) => setSettings({ ...settings, default_multi_thread_cutoff: parseInt(e.target.value) || 1 })}
+                                    className="bg-zinc-900/50 border-zinc-700 text-white h-9"
+                                />
+                                <p className="text-[10px] text-zinc-500">Files larger than this will use multi-threaded transfers</p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end pt-2 border-t border-border/30">
+                            <Button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
+                            >
+                                {saving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                                Save Performance Settings
                             </Button>
                         </div>
                     </CardContent>

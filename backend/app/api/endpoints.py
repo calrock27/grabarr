@@ -1345,10 +1345,22 @@ async def restore_backup(password: str = Form(...), file: UploadFile = File(...)
 class SystemSettingsRead(BaseModel):
     failure_cooldown_seconds: int = 60
     max_history_entries: int = 50
+    timezone: str = "America/New_York"
+    default_transfers: int = 16
+    default_checkers: int = 32
+    default_buffer_size: int = 128
+    default_multi_thread_streams: int = 16
+    default_multi_thread_cutoff: int = 10
 
 class SystemSettingsUpdate(BaseModel):
     failure_cooldown_seconds: Optional[int] = None
     max_history_entries: Optional[int] = None
+    timezone: Optional[str] = None
+    default_transfers: Optional[int] = None
+    default_checkers: Optional[int] = None
+    default_buffer_size: Optional[int] = None
+    default_multi_thread_streams: Optional[int] = None
+    default_multi_thread_cutoff: Optional[int] = None
 
 @router.get("/settings/system", response_model=SystemSettingsRead)
 async def get_system_settings(db: AsyncSession = Depends(get_db)):
@@ -1364,26 +1376,26 @@ async def get_system_settings(db: AsyncSession = Depends(get_db)):
     
     return SystemSettingsRead(
         failure_cooldown_seconds=settings_dict.get('failure_cooldown_seconds', 60),
-        max_history_entries=settings_dict.get('max_history_entries', 50)
+        max_history_entries=settings_dict.get('max_history_entries', 50),
+        timezone=settings_dict.get('timezone', 'America/New_York'),
+        default_transfers=settings_dict.get('default_transfers', 16),
+        default_checkers=settings_dict.get('default_checkers', 32),
+        default_buffer_size=settings_dict.get('default_buffer_size', 128),
+        default_multi_thread_streams=settings_dict.get('default_multi_thread_streams', 16),
+        default_multi_thread_cutoff=settings_dict.get('default_multi_thread_cutoff', 10)
     )
 
 @router.put("/settings/system", response_model=SystemSettingsRead)
 async def update_system_settings(settings: SystemSettingsUpdate, db: AsyncSession = Depends(get_db)):
-    if settings.failure_cooldown_seconds is not None:
-        result = await db.execute(select(SystemSettings).where(SystemSettings.key == 'failure_cooldown_seconds'))
+    # Dynamically update all provided fields
+    update_data = settings.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        result = await db.execute(select(SystemSettings).where(SystemSettings.key == key))
         setting = result.scalars().first()
         if setting:
-            setting.value = str(settings.failure_cooldown_seconds)
+            setting.value = str(value)
         else:
-            db.add(SystemSettings(key='failure_cooldown_seconds', value=str(settings.failure_cooldown_seconds)))
-    
-    if settings.max_history_entries is not None:
-        result = await db.execute(select(SystemSettings).where(SystemSettings.key == 'max_history_entries'))
-        setting = result.scalars().first()
-        if setting:
-            setting.value = str(settings.max_history_entries)
-        else:
-            db.add(SystemSettings(key='max_history_entries', value=str(settings.max_history_entries)))
+            db.add(SystemSettings(key=key, value=str(value)))
     
     await db.commit()
     
