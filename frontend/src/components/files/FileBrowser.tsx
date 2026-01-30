@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Folder, File, ChevronRight, Home, ArrowUp, FolderOpen, FileStack, Ban } from "lucide-react"
+import { Folder, File, ChevronRight, Home, ArrowUp, FolderOpen, FileStack, Ban, Plus, Focus } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface FileItem {
@@ -22,6 +22,9 @@ interface FileBrowserProps {
     initialPath?: string
     onSelectPath: (path: string, copyMode: CopyMode) => void
     onAddExclude?: (pattern: string) => void
+    onRemoveExclude?: (pattern: string) => void
+    onExcludeBatch?: (patterns: string[]) => void
+    excludes?: string[]
     label?: string
     showCopyMode?: boolean
 }
@@ -31,6 +34,9 @@ export function FileBrowser({
     initialPath = "",
     onSelectPath,
     onAddExclude,
+    onRemoveExclude,
+    onExcludeBatch,
+    excludes = [],
     label = "Path",
     showCopyMode = true
 }: FileBrowserProps) {
@@ -172,6 +178,31 @@ export function FileBrowser({
         setContextMenu(null)
     }
 
+    const handleInclude = (pattern: string) => {
+        if (onRemoveExclude) {
+            onRemoveExclude(pattern)
+        }
+        setContextMenu(null)
+    }
+
+    const handleExcludeAllExcept = (item: FileItem) => {
+        if (onExcludeBatch) {
+            const patternsToExclude = items
+                .filter(i => i.Name !== item.Name)
+                .map(i => i.Name)
+            onExcludeBatch(patternsToExclude)
+        }
+        // Ensure the target item is NOT excluded
+        if (onRemoveExclude) {
+            onRemoveExclude(item.Name)
+        }
+        setContextMenu(null)
+    }
+
+    const isExcluded = (itemName: string) => {
+        return excludes.includes(itemName)
+    }
+
     const breadcrumbs = path.split("/").filter(Boolean)
     const displayBreadcrumbs = breadcrumbs.slice(-2) // Show last 2 only
 
@@ -262,39 +293,67 @@ export function FileBrowser({
             </div>
 
             {/* Context Menu */}
-            {contextMenu && onAddExclude && (
+            {contextMenu && (onAddExclude || onRemoveExclude) && (
                 <div
-                    className="fixed z-50 bg-zinc-900 border border-border rounded-md shadow-lg py-1 min-w-[160px]"
+                    className="fixed z-50 bg-zinc-900 border border-border rounded-md shadow-lg py-1 min-w-[200px]"
                     style={{ left: contextMenu.x, top: contextMenu.y }}
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-border/50">
                         {contextMenu.item.Name}
                     </div>
-                    <button
-                        className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
-                        onClick={() => handleExclude(contextMenu.item.Name)}
-                    >
-                        <Ban className="h-3 w-3 text-red-400" />
-                        Exclude "{contextMenu.item.Name}"
-                    </button>
-                    {!contextMenu.item.IsDir && contextMenu.item.Name.includes('.') && (
+                    {/* Include option - shown if item is excluded */}
+                    {isExcluded(contextMenu.item.Name) && onRemoveExclude && (
                         <button
                             className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
-                            onClick={() => handleExclude(`*.${contextMenu.item.Name.split('.').pop()}`)}
+                            onClick={() => handleInclude(contextMenu.item.Name)}
                         >
-                            <Ban className="h-3 w-3 text-orange-400" />
-                            Exclude *.{contextMenu.item.Name.split('.').pop()} files
+                            <Plus className="h-3 w-3 text-green-400" />
+                            Include (add to transfer)
                         </button>
                     )}
-                    {contextMenu.item.IsDir && (
-                        <button
-                            className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
-                            onClick={() => handleExclude(`${contextMenu.item.Name}/**`)}
-                        >
-                            <Ban className="h-3 w-3 text-orange-400" />
-                            Exclude folder & contents
-                        </button>
+                    {/* Exclude options - shown if item is NOT excluded */}
+                    {!isExcluded(contextMenu.item.Name) && onAddExclude && (
+                        <>
+                            <button
+                                className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
+                                onClick={() => handleExclude(contextMenu.item.Name)}
+                            >
+                                <Ban className="h-3 w-3 text-red-400" />
+                                Exclude "{contextMenu.item.Name}"
+                            </button>
+                            {!contextMenu.item.IsDir && contextMenu.item.Name.includes('.') && (
+                                <button
+                                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
+                                    onClick={() => handleExclude(`*.${contextMenu.item.Name.split('.').pop()}`)}
+                                >
+                                    <Ban className="h-3 w-3 text-orange-400" />
+                                    Exclude *.{contextMenu.item.Name.split('.').pop()} files
+                                </button>
+                            )}
+                            {contextMenu.item.IsDir && (
+                                <button
+                                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
+                                    onClick={() => handleExclude(`${contextMenu.item.Name}/**`)}
+                                >
+                                    <Ban className="h-3 w-3 text-orange-400" />
+                                    Exclude folder & contents
+                                </button>
+                            )}
+                        </>
+                    )}
+                    {/* Exclude All Except - always shown when batch is available */}
+                    {onExcludeBatch && items.length > 1 && (
+                        <>
+                            <div className="border-t border-border/50 my-1" />
+                            <button
+                                className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 flex items-center gap-2"
+                                onClick={() => handleExcludeAllExcept(contextMenu.item)}
+                            >
+                                <Focus className="h-3 w-3 text-blue-400" />
+                                Exclude all except this
+                            </button>
+                        </>
                     )}
                 </div>
             )}

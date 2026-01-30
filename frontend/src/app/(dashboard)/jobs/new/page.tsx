@@ -245,13 +245,22 @@ function NewJobPageContent() {
     }
 
     const addExclude = (path: string) => {
-        if (!excludePatterns.includes(path)) {
-            setExcludePatterns([...excludePatterns, path])
-        }
+        setExcludePatterns(prev => {
+            if (prev.includes(path)) return prev
+            return [...prev, path]
+        })
     }
 
     const removeExclude = (pattern: string) => {
-        setExcludePatterns(excludePatterns.filter(p => p !== pattern))
+        setExcludePatterns(prev => prev.filter(p => p !== pattern))
+    }
+
+    const batchAddExclude = (patterns: string[]) => {
+        setExcludePatterns(prev => {
+            const newPatterns = patterns.filter(p => !prev.includes(p))
+            if (newPatterns.length === 0) return prev
+            return [...prev, ...newPatterns]
+        })
     }
 
     const loadSummary = async () => {
@@ -585,6 +594,9 @@ function NewJobPageContent() {
                                     initialPath={sourcePath}
                                     onSelectPath={(path, mode) => { setSourcePath(path); setSourceCopyMode(mode); }}
                                     onAddExclude={addExclude}
+                                    onRemoveExclude={removeExclude}
+                                    onExcludeBatch={batchAddExclude}
+                                    excludes={excludePatterns}
                                     label="Source"
                                 />
                                 <div className="flex items-center justify-center">
