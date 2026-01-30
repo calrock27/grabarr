@@ -2,9 +2,16 @@ import type { NextConfig } from "next";
 
 const backendUrl = process.env.GRABARR_BACKEND_URL || "http://127.0.0.1:8001";
 
+// Generate build timestamp at startup (dev) or build time (prod)
+const buildTime = new Date().toISOString();
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactCompiler: true,
+  env: {
+    NEXT_PUBLIC_BUILD_TIME: buildTime,
+    NEXT_PUBLIC_VERSION: '0.1.0',  // Sync with package.json
+  },
   async rewrites() {
     return {
       beforeFiles: [],

@@ -102,6 +102,9 @@ export interface SystemSettings {
     default_buffer_size?: number
     default_multi_thread_streams?: number
     default_multi_thread_cutoff?: number
+    // SFTP-specific performance settings
+    sftp_chunk_size?: number  // KB, 255 default
+    sftp_concurrency?: number // Outstanding requests, 64 default
 }
 
 export interface Schedule {

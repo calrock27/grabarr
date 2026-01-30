@@ -1351,6 +1351,9 @@ class SystemSettingsRead(BaseModel):
     default_buffer_size: int = 128
     default_multi_thread_streams: int = 16
     default_multi_thread_cutoff: int = 10
+    # SFTP-specific performance settings
+    sftp_chunk_size: int = 255  # KB - OpenSSH supports up to 255K
+    sftp_concurrency: int = 64  # Outstanding requests per file
 
 class SystemSettingsUpdate(BaseModel):
     failure_cooldown_seconds: Optional[int] = None
@@ -1361,6 +1364,9 @@ class SystemSettingsUpdate(BaseModel):
     default_buffer_size: Optional[int] = None
     default_multi_thread_streams: Optional[int] = None
     default_multi_thread_cutoff: Optional[int] = None
+    # SFTP-specific performance settings
+    sftp_chunk_size: Optional[int] = None
+    sftp_concurrency: Optional[int] = None
 
 @router.get("/settings/system", response_model=SystemSettingsRead)
 async def get_system_settings(db: AsyncSession = Depends(get_db)):
@@ -1382,7 +1388,9 @@ async def get_system_settings(db: AsyncSession = Depends(get_db)):
         default_checkers=settings_dict.get('default_checkers', 32),
         default_buffer_size=settings_dict.get('default_buffer_size', 128),
         default_multi_thread_streams=settings_dict.get('default_multi_thread_streams', 16),
-        default_multi_thread_cutoff=settings_dict.get('default_multi_thread_cutoff', 10)
+        default_multi_thread_cutoff=settings_dict.get('default_multi_thread_cutoff', 10),
+        sftp_chunk_size=settings_dict.get('sftp_chunk_size', 255),
+        sftp_concurrency=settings_dict.get('sftp_concurrency', 64)
     )
 
 @router.put("/settings/system", response_model=SystemSettingsRead)

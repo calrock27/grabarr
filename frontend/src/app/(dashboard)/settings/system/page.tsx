@@ -30,7 +30,9 @@ export default function SystemSettingsPage() {
         default_checkers: 32,
         default_buffer_size: 128,
         default_multi_thread_streams: 16,
-        default_multi_thread_cutoff: 10
+        default_multi_thread_cutoff: 10,
+        sftp_chunk_size: 255,
+        sftp_concurrency: 64
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -166,7 +168,9 @@ export default function SystemSettingsPage() {
             default_checkers: 32,
             default_buffer_size: 128,
             default_multi_thread_streams: 16,
-            default_multi_thread_cutoff: 10
+            default_multi_thread_cutoff: 10,
+            sftp_chunk_size: 255,
+            sftp_concurrency: 64
         })
         toast.info("Settings reset to optimized values. Click 'Save' to apply.")
     }
@@ -367,6 +371,55 @@ export default function SystemSettingsPage() {
                                 <p className="text-[10px] text-zinc-500">Files larger than this will use multi-threaded transfers</p>
                             </div>
                         </div>
+
+                        {/* SFTP-Specific Settings */}
+                        <div className="border-t border-border/30 pt-4">
+                            <h4 className="text-sm font-medium text-white mb-4">SFTP Protocol Settings</h4>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                                {/* SFTP Chunk Size */}
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <Label htmlFor="sftpChunk" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                            Chunk Size (KB)
+                                        </Label>
+                                        <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.sftp_chunk_size || 255} KB</span>
+                                    </div>
+                                    <Input
+                                        id="sftpChunk"
+                                        type="range"
+                                        min={32}
+                                        max={255}
+                                        step={1}
+                                        value={settings.sftp_chunk_size || 255}
+                                        onChange={(e) => setSettings({ ...settings, sftp_chunk_size: parseInt(e.target.value) })}
+                                        className="h-6 accent-primary"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">SFTP packet payload size (max 255KB for OpenSSH)</p>
+                                </div>
+
+                                {/* SFTP Concurrency */}
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <Label htmlFor="sftpConcurrency" className="text-zinc-400 text-xs flex items-center gap-1.5">
+                                            Concurrency
+                                        </Label>
+                                        <span className="text-xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">{settings.sftp_concurrency || 64}</span>
+                                    </div>
+                                    <Input
+                                        id="sftpConcurrency"
+                                        type="range"
+                                        min={1}
+                                        max={128}
+                                        step={1}
+                                        value={settings.sftp_concurrency || 64}
+                                        onChange={(e) => setSettings({ ...settings, sftp_concurrency: parseInt(e.target.value) })}
+                                        className="h-6 accent-primary"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">Outstanding requests per file for SFTP</p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="flex justify-end pt-2 border-t border-border/30">
                             <Button
                                 onClick={handleSave}
@@ -379,6 +432,7 @@ export default function SystemSettingsPage() {
                         </div>
                     </CardContent>
                 </Card>
+
 
                 {/* Timezone Settings */}
                 <Card className="bg-card border-border/50">

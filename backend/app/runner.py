@@ -295,6 +295,10 @@ class JobRunner:
             default_buffer_size = await self._get_system_setting('default_buffer_size', 128)
             default_multi_thread_streams = await self._get_system_setting('default_multi_thread_streams', 16)
             default_multi_thread_cutoff = await self._get_system_setting('default_multi_thread_cutoff', 10)
+            
+            # SFTP-specific performance settings (critical for gigabit speeds)
+            sftp_chunk_size = await self._get_system_setting('sftp_chunk_size', 255)  # KB
+            sftp_concurrency = await self._get_system_setting('sftp_concurrency', 64)
 
             # Map operation to rclone command
             # copy -> sync/copy, sync -> sync/sync, move -> sync/move
@@ -312,6 +316,9 @@ class JobRunner:
                     "MultiThreadCutoff": f"{default_multi_thread_cutoff}M"
                 }
             }
+            
+            # SFTP-specific tuning is now applied in get_fs_string via connection string params
+            # (chunk_size, concurrency) - those options are backend-specific and must be in the FS string
             
             # Handle transfer method: proxy = disable server-side copy (force data through client)
             if job.transfer_method == 'proxy':
@@ -736,7 +743,7 @@ class JobRunner:
 
             return f":webdav,{','.join(params)}:"
         
-        # Generic helper for connection strings
+        # Generic helper for connection strings (sftp, ftp, smb)
         params = []
         host = remote.config.get("host", "")
         params.append(f"host=\"{host}\"")
@@ -764,6 +771,15 @@ class JobRunner:
             if obs_pass:
                  params.append(f"pass=\"{obs_pass}\"")
         
+        # SFTP-specific performance tuning (these MUST be in the connection string)
+        # These settings are critical for achieving gigabit speeds over SFTP
+        if remote.type == "sftp":
+            sftp_chunk_size = await self._get_system_setting('sftp_chunk_size', 255)  # KB
+            sftp_concurrency = await self._get_system_setting('sftp_concurrency', 64)
+            params.append(f"chunk_size=\"{sftp_chunk_size}k\"")
+            params.append(f"concurrency=\"{sftp_concurrency}\"")
+        
+
         # Construct Base
         # :type,params:
         base = f":{remote.type},{','.join(params)}:"
